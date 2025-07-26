@@ -368,12 +368,7 @@ function updatePage(pageId, title, properties) {
     });
 }
 
-function deletePage(pageId) {
-    if (confirm('Are you sure you want to delete this page?')) {
-        // Implementation for deleting page
-        console.log('Delete page:', pageId);
-    }
-}
+// deletePage function is implemented in page.html template
 
 // Calendar functions
 function renderCalendar(calendarItems, currentMonth, currentYear) {
@@ -551,7 +546,6 @@ window.closeTaskSidebar = closeTaskSidebar;
 window.renderDatabaseTable = renderDatabaseTable;
 window.updatePageTitle = updatePageTitle;
 window.editPage = editPage;
-window.deletePage = deletePage;
 window.renderCalendar = renderCalendar;
 window.showTaskDetails = showTaskDetails;
 window.toggleTaskCompletion = toggleTaskCompletion; 

@@ -412,6 +412,16 @@ body {
 
 .database-table-row:hover {
     background-color: #374151;
+    cursor: pointer;
+}
+
+.database-table-row.clickable {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.database-table-row.clickable:hover {
+    background-color: #374151;
 }
 
 .database-table-row .table-cell {
@@ -844,12 +854,68 @@ body {
 .page-details h3 {
     font-size: 20px;
     font-weight: 600;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
     color: #ffffff;
 }
 
+.page-header {
+    margin-bottom: 24px;
+}
+
+.page-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 8px;
+}
+
+.page-id, .page-date {
+    background-color: #1f2937;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.page-description-section {
+    margin-bottom: 24px;
+}
+
+.page-description-section h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+    margin-bottom: 12px;
+}
+
+.page-description-full {
+    background-color: #1f2937;
+    border: 1px solid #404040;
+    border-radius: 8px;
+    padding: 16px;
+    color: #d1d5db;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    font-size: 14px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.page-properties-section {
+    margin-top: 24px;
+}
+
+.page-properties-section h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+    margin-bottom: 12px;
+}
+
 .page-properties {
-    margin-top: 16px;
+    background-color: #1f2937;
+    border: 1px solid #404040;
+    border-radius: 8px;
+    padding: 16px;
 }
 
 .detail-property {

@@ -484,5 +484,40 @@ def delete_database():
     save_data(data)
     return jsonify({'success': True})
 
+@app.route('/api/delete_page', methods=['POST'])
+def delete_page():
+    data = load_data()
+    
+    page_id = request.json.get('page_id')
+    
+    if page_id not in data.pages:
+        return jsonify({'success': False, 'error': 'Page not found'})
+    
+    page = data.pages[page_id]
+    
+    # Remove page from all databases that contain it
+    for database in data.databases.values():
+        if database.pages and page_id in database.pages:
+            database.pages.remove(page_id)
+    
+    # Delete the page
+    del data.pages[page_id]
+    
+    # Delete associated blocks
+    blocks_to_delete = []
+    for block_id, block in data.blocks.items():
+        if block.type == 'page' and block.content.get('page_id') == page_id:
+            blocks_to_delete.append(block_id)
+    
+    for block_id in blocks_to_delete:
+        del data.blocks[block_id]
+    
+    # Delete completion logs for this page
+    if page_id in data.completion_logs:
+        del data.completion_logs[page_id]
+    
+    save_data(data)
+    return jsonify({'success': True})
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 
