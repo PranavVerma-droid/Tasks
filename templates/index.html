@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Notion Alternative{% endblock %}
+
+{% block breadcrumb %}
+<span>Home</span>
+{% endblock %}
+
+{% block top_bar_actions %}
+<button class="btn btn-primary" onclick="createNewPage()">
+    <i class="fas fa-plus"></i>
+    New Page
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="welcome-section">
+    <div class="welcome-header">
+        <h1>Welcome to Your Workspace</h1>
+        <p>Create pages, databases, and organize your tasks with powerful repetition features.</p>
+    </div>
+    
+    <div class="quick-actions">
+        <div class="action-card" onclick="createNewPage()">
+            <div class="action-icon">
+                <i class="fas fa-file-alt"></i>
+            </div>
+            <h3>New Page</h3>
+            <p>Create a new page to organize your content</p>
+        </div>
+        
+        <div class="action-card" onclick="location.href='{{ url_for('calendar_view') }}'">
+            <div class="action-icon">
+                <i class="fas fa-calendar-alt"></i>
+            </div>
+            <h3>Calendar View</h3>
+            <p>View all your tasks in a calendar layout</p>
+        </div>
+        
+        <div class="action-card" onclick="createDatabase()">
+            <div class="action-icon">
+                <i class="fas fa-database"></i>
+            </div>
+            <h3>New Database</h3>
+            <p>Create an inline database with custom properties</p>
+        </div>
+    </div>
+    
+    <div class="recent-pages">
+        <h2>Recent Pages</h2>
+        <div class="pages-grid">
+            {% for page_id, page in data.pages.items() %}
+            <div class="page-card" onclick="location.href='{{ url_for('view_page', page_id=page_id) }}'">
+                <div class="page-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div class="page-info">
+                    <h3>{{ page.title }}</h3>
+                    <p>Last updated: {{ page.updated_at.split('T')[0] if page.updated_at else 'Never' }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+function createNewPage() {
+    // For now, redirect to the first page
+    // In a real implementation, this would create a new page
+    const pages = {{ data.pages.keys() | list | tojson }};
+    if (pages.length > 0) {
+        window.location.href = `/page/${pages[0]}`;
+    }
+}
+
+function createDatabase() {
+    // For now, redirect to the first page to create database there
+    const pages = {{ data.pages.keys() | list | tojson }};
+    if (pages.length > 0) {
+        window.location.href = `/page/${pages[0]}`;
+    }
+}
+</script>
+{% endblock %} 
