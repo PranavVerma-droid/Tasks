@@ -1148,3 +1148,229 @@ body {
         grid-template-columns: 150px repeat(auto-fit, minmax(100px, 1fr)) 60px;
     }
 } 
+
+/* Nested database tree styles */
+.nested-indicator {
+    color: #8b5cf6;
+    margin-left: 8px;
+    font-size: 14px;
+}
+
+.page-title-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.database-tree-view {
+    margin-left: 20px;
+    border-left: 2px solid #374151;
+    padding-left: 16px;
+}
+
+.database-tree-item {
+    margin-bottom: 8px;
+    padding: 8px;
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: 6px;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.database-tree-item:hover {
+    background: rgba(139, 92, 246, 0.15);
+}
+
+.tree-expand-button {
+    background: none;
+    border: none;
+    color: #8b5cf6;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    margin-right: 8px;
+}
+
+.tree-expand-button:hover {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.tree-collapsed {
+    display: none;
+}
+
+.tree-expanded {
+    display: block;
+}
+
+/* Breadcrumb improvements */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 14px;
+    color: #9ca3af;
+}
+
+.breadcrumb a {
+    color: #8b5cf6;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.breadcrumb a:hover {
+    color: #a855f7;
+    text-decoration: underline;
+}
+
+.breadcrumb-separator {
+    color: #6b7280;
+    margin: 0 4px;
+}
+
+/* Database container improvements */
+.database-container {
+    margin-bottom: 32px;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.database-header {
+    background: #1f2937;
+    padding: 16px 20px;
+    border-bottom: 1px solid #374151;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.database-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #f9fafb;
+}
+
+.database-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Table improvements for tree view */
+.database-table-row {
+    position: relative;
+}
+
+.database-table-row.has-nested {
+    background: rgba(139, 92, 246, 0.05);
+}
+
+.database-table-row.has-nested:hover {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+/* Nested database indicator in table */
+.table-cell-title .nested-indicator {
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.table-cell-title:hover .nested-indicator {
+    opacity: 1;
+}
+
+/* Tree view toggle animation */
+.tree-toggle {
+    transition: transform 0.2s ease;
+}
+
+.tree-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+/* Responsive tree view */
+@media (max-width: 768px) {
+    .database-tree-view {
+        margin-left: 12px;
+        padding-left: 12px;
+    }
+    
+    .breadcrumb {
+        font-size: 12px;
+    }
+} 
+
+/* Task hierarchy styles */
+.task-hierarchy {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: 6px;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.task-hierarchy label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #8b5cf6;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.hierarchy-path {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 13px;
+    color: #d1d5db;
+}
+
+.hierarchy-item {
+    color: #8b5cf6;
+    font-weight: 500;
+}
+
+.hierarchy-separator {
+    color: #6b7280;
+    margin: 0 2px;
+}
+
+/* Task actions improvements */
+.task-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #374151;
+}
+
+.task-actions .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+/* Calendar event improvements for nested structure */
+.calendar-event.has-nested {
+    border-left: 3px solid #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.calendar-event.has-nested:hover {
+    background: rgba(139, 92, 246, 0.2);
+}
+
+/* Responsive hierarchy */
+@media (max-width: 768px) {
+    .hierarchy-path {
+        font-size: 12px;
+    }
+    
+    .task-hierarchy {
+        padding: 8px;
+    }
+} 

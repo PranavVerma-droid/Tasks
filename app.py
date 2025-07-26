@@ -33,6 +33,7 @@ class Page:
     title: str
     properties: Dict[str, Property]
     databases: List[str] = None  # List of database IDs that are children
+    parent_database_id: str = None  # Parent database ID if this page is inside a database
     created_at: str = None
     updated_at: str = None
 
@@ -42,6 +43,7 @@ class Database:
     name: str
     properties: Dict[str, Property]  # Property definitions
     pages: List[str] = None  # List of page IDs
+    parent_page_id: str = None  # Parent page ID if this database is nested
     created_at: str = None
     updated_at: str = None
 
@@ -206,7 +208,12 @@ def view_page(page_id):
     page = data.pages[page_id]
     databases = [data.databases[db_id] for db_id in page.databases] if page.databases else []
     
-    return render_template('page.html', page=page, databases=databases, data=data)
+    # Get hierarchy for breadcrumb
+    hierarchy_response = get_page_hierarchy(page_id)
+    hierarchy_data = json.loads(hierarchy_response.get_data(as_text=True))
+    hierarchy = hierarchy_data.get('hierarchy', []) if hierarchy_data.get('success') else []
+    
+    return render_template('page.html', page=page, databases=databases, data=data, hierarchy=hierarchy)
 
 @app.route('/calendar')
 def calendar_view():
@@ -281,6 +288,7 @@ def create_database():
         name=name,
         properties=db_properties,
         pages=[],
+        parent_page_id=page_id,  # Set parent page
         created_at=datetime.now().isoformat(),
         updated_at=datetime.now().isoformat()
     )
@@ -332,6 +340,7 @@ def create_page():
         title=title,
         properties=page_properties,
         databases=[],
+        parent_database_id=database_id,  # Set parent database
         created_at=datetime.now().isoformat(),
         updated_at=datetime.now().isoformat()
     )
@@ -556,6 +565,130 @@ def delete_page():
     
     save_data(data)
     return jsonify({'success': True})
+
+@app.route('/api/get_page_hierarchy/<page_id>')
+def get_page_hierarchy(page_id):
+    """Get the complete hierarchy path for a page"""
+    data = load_data()
+    
+    if page_id not in data.pages:
+        return jsonify({'success': False, 'error': 'Page not found'})
+    
+    hierarchy = []
+    current_page = data.pages[page_id]
+    
+    # Build hierarchy from current page up to root
+    while current_page:
+        hierarchy.insert(0, {
+            'id': current_page.id,
+            'title': current_page.title,
+            'type': 'page'
+        })
+        
+        # Find parent database
+        if current_page.parent_database_id:
+            parent_db = data.databases.get(current_page.parent_database_id)
+            if parent_db:
+                hierarchy.insert(0, {
+                    'id': parent_db.id,
+                    'title': parent_db.name,
+                    'type': 'database'
+                })
+                
+                # Find parent page of the database
+                if parent_db.parent_page_id:
+                    current_page = data.pages.get(parent_db.parent_page_id)
+                else:
+                    current_page = None
+            else:
+                current_page = None
+        else:
+            current_page = None
+    
+    return jsonify({
+        'success': True,
+        'hierarchy': hierarchy
+    })
+
+@app.route('/api/get_database_hierarchy/<database_id>')
+def get_database_hierarchy(database_id):
+    """Get the complete hierarchy path for a database"""
+    data = load_data()
+    
+    if database_id not in data.databases:
+        return jsonify({'success': False, 'error': 'Database not found'})
+    
+    hierarchy = []
+    current_database = data.databases[database_id]
+    
+    # Build hierarchy from current database up to root
+    while current_database:
+        hierarchy.insert(0, {
+            'id': current_database.id,
+            'title': current_database.name,
+            'type': 'database'
+        })
+        
+        # Find parent page
+        if current_database.parent_page_id:
+            parent_page = data.pages.get(current_database.parent_page_id)
+            if parent_page:
+                hierarchy.insert(0, {
+                    'id': parent_page.id,
+                    'title': parent_page.title,
+                    'type': 'page'
+                })
+                
+                # Find parent database of the page
+                if parent_page.parent_database_id:
+                    current_database = data.databases.get(parent_page.parent_database_id)
+                else:
+                    current_database = None
+            else:
+                current_database = None
+        else:
+            current_database = None
+    
+    return jsonify({
+        'success': True,
+        'hierarchy': hierarchy
+    })
+
+@app.route('/api/navigate_to_page/<page_id>')
+def navigate_to_page(page_id):
+    """Navigate to a page, showing its databases and hierarchy"""
+    data = load_data()
+    
+    if page_id not in data.pages:
+        return redirect(url_for('index'))
+    
+    page = data.pages[page_id]
+    databases = [data.databases[db_id] for db_id in page.databases] if page.databases else []
+    
+    # Get hierarchy for breadcrumb
+    hierarchy_response = get_page_hierarchy(page_id)
+    hierarchy_data = json.loads(hierarchy_response.get_data(as_text=True))
+    hierarchy = hierarchy_data.get('hierarchy', []) if hierarchy_data.get('success') else []
+    
+    return render_template('page.html', page=page, databases=databases, data=data, hierarchy=hierarchy)
+
+@app.route('/api/navigate_to_database/<database_id>')
+def navigate_to_database(database_id):
+    """Navigate to a database, showing its pages and hierarchy"""
+    data = load_data()
+    
+    if database_id not in data.databases:
+        return redirect(url_for('index'))
+    
+    database = data.databases[database_id]
+    pages = [data.pages[page_id] for page_id in database.pages] if database.pages else []
+    
+    # Get hierarchy for breadcrumb
+    hierarchy_response = get_database_hierarchy(database_id)
+    hierarchy_data = json.loads(hierarchy_response.get_data(as_text=True))
+    hierarchy = hierarchy_data.get('hierarchy', []) if hierarchy_data.get('success') else []
+    
+    return render_template('database.html', database=database, pages=pages, data=data, hierarchy=hierarchy)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 
