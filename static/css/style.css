@@ -826,28 +826,178 @@ body {
 }
 
 /* Page Description Styles */
+/* Rich Description Styles */
 .page-description {
-    font-size: 12px;
-    color: #9ca3af;
+    font-size: 0.85rem;
+    color: #8e8e8e;
     margin-top: 4px;
     line-height: 1.4;
-    max-height: 60px;
+    max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
+    position: relative;
+    cursor: help;
+}
+
+.page-description.has-full-text {
+    position: relative;
+}
+
+.page-description.has-full-text:hover::after {
+    content: attr(data-full-text);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2a2a2a;
+    color: #e0e0e0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    max-width: 300px;
+    width: max-content;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid #404040;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease-in-out;
+    pointer-events: none;
+}
+
+.page-description.has-full-text:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #2a2a2a;
+    margin-bottom: -6px;
+    z-index: 1001;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease-in-out;
+    pointer-events: none;
+}
+
+.page-description.has-full-text:hover::after,
+.page-description.has-full-text:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Page Description Section */
+.page-description-section {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+    margin-top: 16px;
+}
+
+.page-description-section h4 {
+    color: #e0e0e0;
+    margin: 0 0 12px 0;
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-description-section h4::before {
+    content: '\f15c';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    color: #8e8e8e;
+    font-size: 0.9rem;
 }
 
 .page-description-full {
-    background-color: #1f2937;
-    border: 1px solid #404040;
-    border-radius: 6px;
-    padding: 12px;
-    margin: 16px 0;
-    color: #d1d5db;
+    color: #c0c0c0;
     line-height: 1.6;
+    font-size: 0.95rem;
     white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Task Details Description */
+.task-details .task-description {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    color: #c0c0c0;
+    line-height: 1.5;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Calendar Event Description */
+.calendar-event {
+    position: relative;
+    cursor: pointer;
+}
+
+.calendar-event.has-description::after {
+    content: '\f05a';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 0.7rem;
+    color: #8e8e8e;
+    opacity: 0.7;
+}
+
+/* Database Table Row Description */
+.database-table-row .page-description {
+    max-width: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    margin-top: 6px;
+    padding: 4px 8px;
+    background: #1a1a1a;
+    border-radius: 4px;
+    border-left: 3px solid #404040;
+}
+
+.database-table-row .page-description.has-full-text {
+    cursor: pointer;
+}
+
+.database-table-row .page-description.has-full-text:hover {
+    background: #2a2a2a;
+    border-left-color: #666;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .page-description.has-full-text:hover::after {
+        max-width: 250px;
+        left: 0;
+        transform: none;
+    }
+    
+    .page-description.has-full-text:hover::before {
+        left: 20px;
+        transform: none;
+    }
+    
+    .page-description-section {
+        padding: 16px;
+        margin-bottom: 20px;
+    }
 }
 
 /* Page Details Modal */

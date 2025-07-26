@@ -78,8 +78,27 @@ class NotionData:
     def from_dict(cls, data):
         instance = cls()
         instance.blocks = {k: Block(**v) for k, v in data.get('blocks', {}).items()}
-        instance.pages = {k: Page(**v) for k, v in data.get('pages', {}).items()}
-        instance.databases = {k: Database(**v) for k, v in data.get('databases', {}).items()}
+        
+        # Convert pages with proper Property objects
+        instance.pages = {}
+        for k, v in data.get('pages', {}).items():
+            # Convert properties to Property objects
+            properties = {}
+            for prop_id, prop_data in v.get('properties', {}).items():
+                properties[prop_id] = Property(**prop_data)
+            v['properties'] = properties
+            instance.pages[k] = Page(**v)
+        
+        # Convert databases with proper Property objects
+        instance.databases = {}
+        for k, v in data.get('databases', {}).items():
+            # Convert properties to Property objects
+            properties = {}
+            for prop_id, prop_data in v.get('properties', {}).items():
+                properties[prop_id] = Property(**prop_data)
+            v['properties'] = properties
+            instance.databases[k] = Database(**v)
+        
         instance.completion_logs = {k: [CompletionLog(**log) for log in v] for k, v in data.get('completion_logs', {}).items()}
         return instance
 
@@ -138,33 +157,40 @@ def get_status_property(page: Page) -> Optional[Property]:
 
 def calculate_repetition_dates(start_date: str, repetition_type: str, repetition_config: dict) -> List[str]:
     """Calculate all dates for a repeating task"""
-    start = datetime.fromisoformat(start_date)
-    dates = []
-    
-    if repetition_type == 'daily':
-        current = start
-        for _ in range(365):  # Limit to 1 year
-            dates.append(current.isoformat())
-            current += timedelta(days=1)
-    
-    elif repetition_type == 'weekly':
-        days_of_week = repetition_config.get('days', [0, 1, 2, 3, 4, 5, 6])  # Monday=0
-        current = start
-        for _ in range(52):  # Limit to 1 year
-            if current.weekday() in days_of_week:
+    try:
+        start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        dates = []
+        
+        if repetition_type == 'daily':
+            current = start
+            for _ in range(365):  # Limit to 1 year
                 dates.append(current.isoformat())
-            current += timedelta(days=1)
-    
-    elif repetition_type == 'custom_days':
-        interval = repetition_config.get('interval', 1)
-        days = repetition_config.get('days', [0, 1, 2, 3, 4, 5, 6])
-        current = start
-        for _ in range(365):
-            if current.weekday() in days:
-                dates.append(current.isoformat())
-            current += timedelta(days=interval)
-    
-    return dates
+                current += timedelta(days=1)
+        
+        elif repetition_type == 'weekly':
+            days_of_week = repetition_config.get('days', [0, 1, 2, 3, 4, 5, 6])  # Monday=0
+            current = start
+            for _ in range(52):  # Limit to 1 year
+                if current.weekday() in days_of_week:
+                    dates.append(current.isoformat())
+                current += timedelta(days=1)
+        
+        elif repetition_type == 'custom_days':
+            interval = repetition_config.get('interval', 1)
+            days = repetition_config.get('days', [0, 1, 2, 3, 4, 5, 6])
+            current = start
+            for _ in range(365):
+                if current.weekday() in days:
+                    dates.append(current.isoformat())
+                current += timedelta(days=interval)
+        
+        return dates
+    except ValueError as e:
+        print(f"Invalid start date for repetition: {start_date}")
+        return []
+    except Exception as e:
+        print(f"Error calculating repetition dates: {e}")
+        return []
 
 @app.route('/')
 def index():
@@ -191,30 +217,42 @@ def calendar_view():
     for page in data.pages.values():
         date_prop = get_date_property(page)
         if date_prop and date_prop.value:
-            if isinstance(date_prop.value, dict) and date_prop.value.get('repetition'):
-                # Handle repeating tasks
-                repetition_config = date_prop.value.get('repetition_config', {})
-                dates = calculate_repetition_dates(
-                    date_prop.value['start_date'],
-                    date_prop.value['repetition_type'],
-                    repetition_config
-                )
-                for date in dates:
-                    calendar_items.append({
-                        'page': page,
-                        'date': date,
-                        'is_repeating': True,
-                        'repetition_config': date_prop.value.get('repetition_config', {})
-                    })
-            else:
-                # Single date
-                date_str = date_prop.value if isinstance(date_prop.value, str) else date_prop.value.get('start_date', '')
-                if date_str:
-                    calendar_items.append({
-                        'page': page,
-                        'date': date_str,
-                        'is_repeating': False
-                    })
+            try:
+                if isinstance(date_prop.value, dict) and date_prop.value.get('repetition'):
+                    # Handle repeating tasks
+                    repetition_config = date_prop.value.get('repetition_config', {})
+                    start_date = date_prop.value.get('start_date', '')
+                    if start_date:
+                        dates = calculate_repetition_dates(
+                            start_date,
+                            date_prop.value['repetition_type'],
+                            repetition_config
+                        )
+                        for date in dates:
+                            calendar_items.append({
+                                'page': page,
+                                'date': date,
+                                'is_repeating': True,
+                                'repetition_config': date_prop.value.get('repetition_config', {})
+                            })
+                else:
+                    # Single date
+                    date_str = date_prop.value if isinstance(date_prop.value, str) else date_prop.value.get('start_date', '')
+                    if date_str:
+                        # Validate the date string
+                        try:
+                            datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                            calendar_items.append({
+                                'page': page,
+                                'date': date_str,
+                                'is_repeating': False
+                            })
+                        except ValueError:
+                            print(f"Invalid date string: {date_str}")
+                            continue
+            except Exception as e:
+                print(f"Error processing date property for page {page.id}: {e}")
+                continue
     
     return render_template('calendar.html', calendar_items=calendar_items, data=data)
 

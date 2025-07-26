@@ -28,6 +28,14 @@
     </div>
     
     <div class="page-content">
+        <!-- Page Description Section -->
+        {% if page.properties.description and page.properties.description.value %}
+        <div class="page-description-section">
+            <h4>Description</h4>
+            <div class="page-description-full">{{ page.properties.description.value }}</div>
+        </div>
+        {% endif %}
+        
         <!-- Existing databases -->
         {% for database in databases %}
         <div class="database-container" data-database-id="{{ database.id }}">
@@ -121,7 +129,16 @@ function renderDatabaseTable(databaseId, pages, database) {
         titleCell.className = 'table-cell table-cell-title';
         
         const description = page.properties.description ? page.properties.description.value : '';
-        const descriptionHtml = description ? `<div class="page-description">${description}</div>` : '';
+        let descriptionHtml = '';
+        
+        if (description) {
+            const isLongDescription = description.length > 50;
+            const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
+            const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
+            const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
+            
+            descriptionHtml = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
+        }
         
         titleCell.innerHTML = `
             <div class="page-title-editable" contenteditable="true" onblur="updatePageTitle('${page.id}', this.textContent)">
@@ -740,12 +757,10 @@ function viewPageDetails(pageId) {
 
 function showPageDetailsModal(page) {
     let propertiesHtml = '';
-    let hasDescription = false;
     
     // Separate description from other properties
     Object.values(page.properties).forEach(prop => {
         if (prop.name === 'Description') {
-            hasDescription = true;
             return; // Skip description here, we'll show it separately
         }
         if (prop.value) {

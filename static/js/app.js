@@ -28,7 +28,15 @@ function closeTaskSidebar() {
 
 // Utility functions
 function formatDate(date) {
-    return date.toISOString().split('T')[0];
+    try {
+        if (isNaN(date.getTime())) {
+            return '';
+        }
+        return date.toISOString().split('T')[0];
+    } catch (error) {
+        console.warn('Invalid date in formatDate:', date);
+        return '';
+    }
 }
 
 function parseDate(dateString) {
@@ -226,14 +234,28 @@ function renderDatabaseTable(databaseId, pages, database) {
         row.className = 'database-table-row';
         row.setAttribute('data-page-id', page.id);
         
-        // Title cell
+        // Title cell with description
         const titleCell = document.createElement('div');
         titleCell.className = 'table-cell table-cell-title';
+        
+        const description = page.properties.description ? page.properties.description.value : '';
+        let descriptionHtml = '';
+        
+        if (description) {
+            const isLongDescription = description.length > 50;
+            const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
+            const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
+            const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
+            
+            descriptionHtml = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
+        }
+        
         titleCell.innerHTML = `
             <div class="page-title-editable" contenteditable="true" 
                  onblur="updatePageTitle('${page.id}', this.textContent)">
                 ${page.title}
             </div>
+            ${descriptionHtml}
         `;
         row.appendChild(titleCell);
         
@@ -420,13 +442,30 @@ function renderCalendar(calendarItems, currentMonth, currentYear) {
             
             const dateString = formatDate(date);
             const dayEvents = calendarItems.filter(item => {
-                const eventDate = new Date(item.date);
-                return eventDate.toDateString() === date.toDateString();
+                try {
+                    const eventDate = new Date(item.date);
+                    // Check if the date is valid
+                    if (isNaN(eventDate.getTime())) {
+                        return false;
+                    }
+                    return eventDate.toDateString() === date.toDateString();
+                } catch (error) {
+                    console.warn('Invalid date in calendar item:', item.date);
+                    return false;
+                }
             });
             
             dayEvents.forEach(event => {
                 const eventElement = document.createElement('div');
                 eventElement.className = 'calendar-event';
+                
+                // Check if page has description
+                const description = event.page.properties.description ? event.page.properties.description.value : '';
+                if (description) {
+                    eventElement.classList.add('has-description');
+                    eventElement.setAttribute('data-description', description);
+                }
+                
                 eventElement.textContent = event.page.title;
                 eventElement.onclick = () => showTaskDetails(event.page, dateString);
                 
@@ -459,12 +498,23 @@ function showTaskDetails(page, date) {
                 let detailsHtml = `
                     <div class="task-details">
                         <h3>${pageData.title}</h3>
+                `;
+                
+                // Add description if it exists
+                const description = pageData.properties.description ? pageData.properties.description.value : '';
+                if (description) {
+                    detailsHtml += `
+                        <div class="task-description">${description}</div>
+                    `;
+                }
+                
+                detailsHtml += `
                         <div class="task-properties">
                 `;
                 
-                // Add properties
+                // Add properties (excluding description since we already showed it)
                 Object.values(pageData.properties).forEach(prop => {
-                    if (prop.value) {
+                    if (prop.value && prop.name !== 'Description') {
                         detailsHtml += `
                             <div class="task-property">
                                 <label>${prop.name}:</label>
