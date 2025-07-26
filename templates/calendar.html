@@ -52,96 +52,32 @@ let currentYear = currentDate.getFullYear();
 const calendarItems = {{ calendar_items | tojson }};
 
 document.addEventListener('DOMContentLoaded', function() {
-    renderCalendar();
+    renderCalendar(calendarItems, currentMonth, currentYear);
 });
 
-function renderCalendar() {
-    const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    
-    document.getElementById('currentMonth').textContent = `${monthNames[currentMonth]} ${currentYear}`;
-    
-    const calendarDays = document.getElementById('calendarDays');
-    calendarDays.innerHTML = '';
-    
-    // Get first day of month and number of days
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    const startDate = new Date(firstDay);
-    startDate.setDate(startDate.getDate() - firstDay.getDay());
-    
-    // Generate calendar grid
-    for (let week = 0; week < 6; week++) {
-        for (let day = 0; day < 7; day++) {
-            const date = new Date(startDate);
-            date.setDate(startDate.getDate() + (week * 7) + day);
-            
-            const dayElement = document.createElement('div');
-            dayElement.className = 'calendar-day';
-            
-            // Check if it's current month
-            if (date.getMonth() === currentMonth) {
-                dayElement.classList.add('current-month');
-            }
-            
-            // Check if it's today
-            const today = new Date();
-            if (date.toDateString() === today.toDateString()) {
-                dayElement.classList.add('today');
-            }
-            
-            // Add day number
-            const dayNumber = document.createElement('div');
-            dayNumber.className = 'day-number';
-            dayNumber.textContent = date.getDate();
-            dayElement.appendChild(dayNumber);
-            
-            // Add events for this day
-            const eventsContainer = document.createElement('div');
-            eventsContainer.className = 'day-events';
-            
-            const dateString = date.toISOString().split('T')[0];
-            const dayEvents = calendarItems.filter(item => {
-                try {
-                    const eventDate = new Date(item.date);
-                    // Check if the date is valid
-                    if (isNaN(eventDate.getTime())) {
-                        return false;
-                    }
-                    return eventDate.toDateString() === date.toDateString();
-                } catch (error) {
-                    console.warn('Invalid date in calendar item:', item.date);
-                    return false;
-                }
-            });
-            
-            dayEvents.forEach(event => {
-                const eventElement = document.createElement('div');
-                eventElement.className = 'calendar-event';
-                
-                // Check if page has description
-                const description = event.page.properties.description ? event.page.properties.description.value : '';
-                if (description) {
-                    eventElement.classList.add('has-description');
-                    eventElement.setAttribute('data-description', description);
-                }
-                
-                eventElement.textContent = event.page.title;
-                eventElement.onclick = () => showTaskDetails(event.page, dateString);
-                
-                if (event.is_repeating) {
-                    eventElement.classList.add('repeating');
-                }
-                
-                eventsContainer.appendChild(eventElement);
-            });
-            
-            dayElement.appendChild(eventsContainer);
-            calendarDays.appendChild(dayElement);
-        }
+function previousMonth() {
+    currentMonth--;
+    if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
     }
+    renderCalendar(calendarItems, currentMonth, currentYear);
+}
+
+function nextMonth() {
+    currentMonth++;
+    if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+    }
+    renderCalendar(calendarItems, currentMonth, currentYear);
+}
+
+function goToToday() {
+    currentDate = new Date();
+    currentMonth = currentDate.getMonth();
+    currentYear = currentDate.getFullYear();
+    renderCalendar(calendarItems, currentMonth, currentYear);
 }
 
 function previousMonth() {
@@ -169,97 +105,6 @@ function goToToday() {
     renderCalendar();
 }
 
-function showTaskDetails(page, date) {
-    fetch(`/api/get_page_data/${page.id}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const pageData = data.page;
-                const completionLogs = data.completion_logs;
-                
-                // Check if task is completed for this date
-                const completionLog = completionLogs.find(log => log.date === date);
-                const isCompleted = completionLog ? completionLog.completed : false;
-                
-                // Build task details HTML
-                let detailsHtml = `
-                    <div class="task-details">
-                        <h3>${pageData.title}</h3>
-                `;
-                
-                // Add description if it exists
-                const description = pageData.properties.description ? pageData.properties.description.value : '';
-                if (description) {
-                    detailsHtml += `
-                        <div class="task-description">${description}</div>
-                    `;
-                }
-                
-                detailsHtml += `
-                        <div class="task-properties">
-                `;
-                
-                // Add properties (excluding description since we already showed it)
-                Object.values(pageData.properties).forEach(prop => {
-                    if (prop.value && prop.name !== 'Description') {
-                        detailsHtml += `
-                            <div class="task-property">
-                                <label>${prop.name}:</label>
-                                <span>${prop.value}</span>
-                            </div>
-                        `;
-                    }
-                });
-                
-                detailsHtml += `
-                        </div>
-                        <div class="task-actions">
-                            <label class="checkbox-container">
-                                <input type="checkbox" ${isCompleted ? 'checked' : ''} 
-                                       onchange="toggleTaskCompletion('${pageData.id}', '${date}', this.checked)">
-                                <span class="checkmark"></span>
-                                Mark as completed for ${date}
-                            </label>
-                        </div>
-                    </div>
-                `;
-                
-                // Show in sidebar
-                document.getElementById('taskSidebarTitle').textContent = pageData.title;
-                document.getElementById('taskSidebarContent').innerHTML = detailsHtml;
-                document.getElementById('taskSidebar').classList.add('active');
-            }
-        })
-        .catch(error => {
-            console.error('Error loading task details:', error);
-        });
-}
 
-function toggleTaskCompletion(pageId, date, completed) {
-    fetch('/api/mark_completed', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            page_id: pageId,
-            date: date,
-            completed: completed
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Task completion updated');
-        }
-    })
-    .catch(error => {
-        console.error('Error updating task completion:', error);
-    });
-}
-
-function closeTaskSidebar() {
-    document.getElementById('taskSidebar').classList.remove('active');
-}
 </script>
 {% endblock %} 
