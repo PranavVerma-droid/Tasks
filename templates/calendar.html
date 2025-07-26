@@ -160,6 +160,11 @@ function renderCalendar(calendarItems, currentMonth, currentYear) {
                     eventElement.classList.add('repeating');
                 }
                 
+                // Add nested databases indicator
+                if (event.page.databases && event.page.databases.length > 0) {
+                    eventElement.classList.add('has-nested-databases');
+                }
+                
                 eventsContainer.appendChild(eventElement);
             });
             
@@ -206,6 +211,31 @@ function showTaskDetails(page, date) {
                                     detailsHtml += '<span class="hierarchy-separator">/</span>';
                                 }
                                 detailsHtml += `<span class="hierarchy-item">${item.title}</span>`;
+                            });
+                            
+                            detailsHtml += `
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        
+                        // Add nested databases if any
+                        if (pageData.databases && pageData.databases.length > 0) {
+                            detailsHtml += `
+                                <div class="task-nested-databases">
+                                    <label>Nested Databases:</label>
+                                    <div class="nested-databases-list">
+                            `;
+                            
+                            pageData.databases.forEach(dbId => {
+                                // This would need to be fetched from the server
+                                // For now, we'll show a placeholder
+                                detailsHtml += `
+                                    <div class="nested-database-item">
+                                        <i class="fas fa-database"></i>
+                                        <span>Database ${dbId.substring(0, 8)}...</span>
+                                    </div>
+                                `;
                             });
                             
                             detailsHtml += `

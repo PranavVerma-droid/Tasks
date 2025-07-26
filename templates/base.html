@@ -36,10 +36,43 @@
                 <div class="sidebar-section">
                     <div class="sidebar-section-title">Pages</div>
                     {% for page_id, page in data.pages.items() %}
-                    <a href="{{ url_for('view_page', page_id=page_id) }}" class="sidebar-item">
-                        <i class="fas fa-file-alt"></i>
-                        <span>{{ page.title }}</span>
-                    </a>
+                    {% if not page.parent_database_id %}
+                    <div class="sidebar-page-item">
+                        <a href="{{ url_for('view_page', page_id=page_id) }}" class="sidebar-item">
+                            <i class="fas fa-file-alt"></i>
+                            <span>{{ page.title }}</span>
+                        </a>
+                        {% if page.databases %}
+                        <div class="sidebar-nested-databases">
+                            {% for db_id in page.databases %}
+                            {% if db_id in data.databases %}
+                            {% set database = data.databases[db_id] %}
+                            <div class="sidebar-database-item">
+                                <div class="sidebar-database-header" onclick="toggleDatabaseTree(this)">
+                                    <i class="fas fa-database"></i>
+                                    <span>{{ database.name }}</span>
+                                    <i class="fas fa-chevron-down expand-icon"></i>
+                                </div>
+                                {% if database.pages %}
+                                <div class="sidebar-nested-pages">
+                                    {% for nested_page_id in database.pages %}
+                                    {% if nested_page_id in data.pages %}
+                                    {% set nested_page = data.pages[nested_page_id] %}
+                                    <a href="{{ url_for('navigate_to_page', page_id=nested_page_id) }}" class="sidebar-item sidebar-nested-item">
+                                        <i class="fas fa-file-alt"></i>
+                                        <span>{{ nested_page.title }}</span>
+                                    </a>
+                                    {% endif %}
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     {% endfor %}
                 </div>
             </div>
@@ -92,5 +125,38 @@
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     {% block extra_js %}{% endblock %}
+    
+    <script>
+    function toggleDatabaseTree(element) {
+        const databaseItem = element.closest('.sidebar-database-item');
+        const nestedPages = databaseItem.querySelector('.sidebar-nested-pages');
+        const expandIcon = element.querySelector('.expand-icon');
+        
+        if (nestedPages) {
+            databaseItem.classList.toggle('collapsed');
+            
+            if (databaseItem.classList.contains('collapsed')) {
+                expandIcon.style.transform = 'rotate(-90deg)';
+            } else {
+                expandIcon.style.transform = 'rotate(0deg)';
+            }
+        }
+    }
+    
+    // Initialize collapsed state for databases with no pages
+    document.addEventListener('DOMContentLoaded', function() {
+        const databaseItems = document.querySelectorAll('.sidebar-database-item');
+        databaseItems.forEach(item => {
+            const nestedPages = item.querySelector('.sidebar-nested-pages');
+            if (!nestedPages || nestedPages.children.length === 0) {
+                item.classList.add('collapsed');
+                const expandIcon = item.querySelector('.expand-icon');
+                if (expandIcon) {
+                    expandIcon.style.transform = 'rotate(-90deg)';
+                }
+            }
+        });
+    });
+    </script>
 </body>
 </html> 
