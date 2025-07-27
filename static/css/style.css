@@ -324,8 +324,8 @@ body {
 }
 
 .page-title-editable {
-    font-size: 32px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 500;
     color: #ffffff;
     outline: none;
     border: 2px solid transparent;
@@ -648,7 +648,7 @@ body {
 }
 
 .task-details h3 {
-    font-size: 20px;
+    font-size: 13px;
     font-weight: 600;
     margin-bottom: 16px;
     color: #ffffff;
@@ -1973,8 +1973,7 @@ textarea.rich-text-initialized {
     }
     
     .page-description-full h1 { font-size: 20px; }
-    .page-description-full h2 { font-size: 18px; }
-    .page-description-full h3 { font-size: 16px; }
+    .page-description_full h3 { font-size: 16px; }
 }
 
 @media (max-width: 480px) {
