@@ -591,7 +591,7 @@ function toggleTaskCompletion(pageId, date, completed) {
         })
     })
     .then(response => response.json())
-    .then data => {
+    .then(data => {
         if (data.success) {
             console.log('Task completion updated');
         }

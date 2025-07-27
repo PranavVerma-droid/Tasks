@@ -952,7 +952,13 @@
         }
 
         function setRichTextContent(selector, content) {
-            const element = document.querySelector('#' + selector);
+            // Ensure selector starts with a single '#'
+            let element = null;
+            if (selector.startsWith('#')) {
+                element = document.querySelector(selector);
+            } else {
+                element = document.getElementById(selector);
+            }
             if (element) {
                 element.value = content;
                 // Update the rich editor if it exists
