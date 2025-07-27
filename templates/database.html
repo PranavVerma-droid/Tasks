@@ -52,6 +52,9 @@
 <script>
 const currentDatabaseId = '{{ database.id }}';
 
+// Make currentDatabaseId globally accessible for auto-save
+window.currentDatabaseId = currentDatabaseId;
+
 // Load database data when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadDatabaseData(currentDatabaseId);
@@ -85,7 +88,7 @@ function renderDatabaseTable(databaseId, pages, database) {
         const titleCell = document.createElement('div');
         titleCell.className = 'table-cell table-cell-title';
         
-        const description = page.properties.description ? page.properties.description.value : '';
+        const description = page.properties.description ? page.properties.description.rich_text_content || page.properties.description.value : '';
         let descriptionHtml = '';
         
         if (description) {
@@ -164,6 +167,12 @@ function renderPropertyValue(pageProp, propDef) {
     switch (propDef.type) {
         case 'text':
             return `<span>${pageProp.value || ''}</span>`;
+        case 'rich_text':
+            const richContent = pageProp.rich_text_content || pageProp.value || '';
+            if (richContent) {
+                return `<div class="rich-text-preview">${richContent}</div>`;
+            }
+            return `<span class="empty-property">-</span>`;
         case 'date':
             if (pageProp.value && typeof pageProp.value === 'object') {
                 const dateValue = pageProp.value.start_date || pageProp.value.end_date || '';
@@ -214,7 +223,7 @@ function showAddPageModal(databaseId, database) {
         </div>
         <div class="form-group">
             <label for="modalPageDescription">Description</label>
-            <textarea id="modalPageDescription" class="form-control" rows="4" placeholder="Enter a description for this page"></textarea>
+            <textarea id="modalPageDescription" data-rich-text="true" data-placeholder="Enter description..."></textarea>
         </div>
         ${propertiesHtml}
         <div class="modal-actions">
@@ -226,31 +235,48 @@ function showAddPageModal(databaseId, database) {
     document.getElementById('modalTitle').textContent = 'Add Page';
     document.getElementById('modalContent').innerHTML = modalContent;
     document.getElementById('modalOverlay').classList.add('active');
+    
+    // Initialize our custom rich text editor for all rich text fields in modal
+    setTimeout(() => {
+        initRichTextEditorForModal();
+    }, 200);
 }
 
 function renderPropertyInput(property, index) {
+    const inputId = `modalProp_${index}`;
+    let inputHtml = '';
+    
     switch (property.type) {
         case 'text':
-            return `<input type="text" id="modalProp_${index}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}">`;
-            
-        case 'date':
-            return `<input type="date" id="modalProp_${index}" class="form-control">`;
-            
-        case 'select':
-        case 'status':
-            const options = property.options || ['Not Started', 'In Progress', 'Done'];
-            let optionsHtml = '<option value="">Select...</option>';
-            options.forEach(option => {
-                optionsHtml += `<option value="${option}">${option}</option>`;
-            });
-            return `<select id="modalProp_${index}" class="form-control">${optionsHtml}</select>`;
-            
+            inputHtml = `<input type="text" id="${inputId}" placeholder="Enter ${property.name.toLowerCase()}...">`;
+            break;
         case 'number':
-            return `<input type="number" id="modalProp_${index}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}">`;
-            
+            inputHtml = `<input type="number" id="${inputId}" placeholder="Enter ${property.name.toLowerCase()}...">`;
+            break;
+        case 'date':
+            inputHtml = `<input type="date" id="${inputId}">`;
+            break;
+        case 'select':
+            const options = property.options.map(option => 
+                `<option value="${option}">${option}</option>`
+            ).join('');
+            inputHtml = `<select id="${inputId}"><option value="">Select ${property.name.toLowerCase()}...</option>${options}</select>`;
+            break;
+        case 'status':
+            const statusOptions = ['Not Started', 'In Progress', 'Done'];
+            const statusOptionsHtml = statusOptions.map(option => 
+                `<option value="${option}">${option}</option>`
+            ).join('');
+            inputHtml = `<select id="${inputId}"><option value="">Select status...</option>${statusOptionsHtml}</select>`;
+            break;
+        case 'rich_text':
+            inputHtml = `<textarea id="${inputId}" data-rich-text="true" data-placeholder="Enter ${property.name.toLowerCase()}..."></textarea>`;
+            break;
         default:
-            return `<input type="text" id="modalProp_${index}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}">`;
+            inputHtml = `<input type="text" id="${inputId}" placeholder="Enter ${property.name.toLowerCase()}...">`;
     }
+    
+    return inputHtml;
 }
 
 function confirmCreatePage(databaseId) {
@@ -280,27 +306,47 @@ function confirmCreatePage(databaseId) {
                 Object.values(database.properties).forEach((prop, index) => {
                     const inputElement = document.getElementById(`modalProp_${index}`);
                     if (inputElement) {
-                        const value = inputElement.value;
+                        let value = '';
+                        if (prop.type === 'rich_text') {
+                            value = getRichTextContent(`modalProp_${index}`);
+                        } else {
+                            value = inputElement.value;
+                        }
+                        
                         if (value) {
                             properties[prop.id] = {
                                 name: prop.name,
                                 type: prop.type,
-                                value: value
+                                value: prop.type === 'rich_text' ? '' : value,
+                                rich_text_content: prop.type === 'rich_text' ? value : null
                             };
                         }
                     }
                 });
                 
                 // Add description property
-                if (descriptionElement && descriptionElement.value.trim()) {
-                    properties['description'] = {
-                        name: 'Description',
-                        type: 'text',
-                        value: descriptionElement.value.trim()
-                    };
+                if (descriptionElement) {
+                    // Add a small delay to ensure rich text editor is fully initialized
+                    setTimeout(() => {
+                        const descriptionContent = getRichTextContent('modalPageDescription');
+                        console.log('Description content retrieved:', descriptionContent);
+                        if (descriptionContent.trim()) {
+                            properties['description'] = {
+                                name: 'Description',
+                                type: 'rich_text',
+                                value: '',
+                                rich_text_content: descriptionContent.trim()
+                            };
+                            console.log('Description property added:', properties['description']);
+                        }
+                        
+                        console.log('Final properties object:', properties);
+                        createPageWithProperties(databaseId, title, properties);
+                    }, 100);
+                } else {
+                    console.log('Final properties object:', properties);
+                    createPageWithProperties(databaseId, title, properties);
                 }
-                
-                createPageWithProperties(databaseId, title, properties);
             }
         })
         .catch(error => {
@@ -496,6 +542,7 @@ function showDatabaseEditModal(database) {
                 <input type="text" class="form-control property-name" value="${prop.name}" placeholder="Property name">
                 <select class="form-control property-type">
                     <option value="text" ${prop.type === 'text' ? 'selected' : ''}>Text</option>
+                    <option value="rich_text" ${prop.type === 'rich_text' ? 'selected' : ''}>Rich Text</option>
                     <option value="date" ${prop.type === 'date' ? 'selected' : ''}>Date</option>
                     <option value="select" ${prop.type === 'select' ? 'selected' : ''}>Select</option>
                     <option value="status" ${prop.type === 'status' ? 'selected' : ''}>Status</option>
@@ -541,13 +588,14 @@ function addPropertyToEdit() {
     propertyItem.className = 'property-item';
     propertyItem.innerHTML = `
         <input type="text" class="form-control property-name" placeholder="Property name">
-        <select class="form-control property-type">
-            <option value="text">Text</option>
-            <option value="date">Date</option>
-            <option value="select">Select</option>
-            <option value="status">Status</option>
-            <option value="number">Number</option>
-        </select>
+                            <select class="form-control property-type">
+                        <option value="text">Text</option>
+                        <option value="rich_text">Rich Text</option>
+                        <option value="date">Date</option>
+                        <option value="select">Select</option>
+                        <option value="status">Status</option>
+                        <option value="number">Number</option>
+                    </select>
         <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
     `;
     propertiesList.appendChild(propertyItem);

@@ -23,9 +23,10 @@ os.makedirs(DATA_DIR, exist_ok=True)
 class Property:
     id: str
     name: str
-    type: str  # 'text', 'date', 'select', 'number', 'status'
+    type: str  # 'text', 'date', 'select', 'number', 'status', 'rich_text'
     value: Any = None
     options: List[str] = None  # For select/status types
+    rich_text_content: Optional[str] = None  # For rich text type
 
 @dataclass
 class Page:
@@ -69,39 +70,98 @@ class NotionData:
         self.completion_logs: Dict[str, List[CompletionLog]] = {}  # page_id -> completion logs
         
     def to_dict(self):
+        def serialize_property(prop):
+            return {
+                'id': prop.id,
+                'name': prop.name,
+                'type': prop.type,
+                'value': prop.value,
+                'options': prop.options,
+                'rich_text_content': prop.rich_text_content
+            }
+        
+        def serialize_page(page):
+            return {
+                'id': page.id,
+                'title': page.title,
+                'properties': {k: serialize_property(v) for k, v in page.properties.items()},
+                'databases': page.databases,
+                'parent_database_id': page.parent_database_id,
+                'created_at': page.created_at,
+                'updated_at': page.updated_at
+            }
+        
+        def serialize_database(db):
+            return {
+                'id': db.id,
+                'name': db.name,
+                'properties': {k: serialize_property(v) for k, v in db.properties.items()},
+                'pages': db.pages,
+                'parent_page_id': db.parent_page_id,
+                'created_at': db.created_at,
+                'updated_at': db.updated_at
+            }
+        
         return {
             'blocks': {k: asdict(v) for k, v in self.blocks.items()},
-            'pages': {k: asdict(v) for k, v in self.pages.items()},
-            'databases': {k: asdict(v) for k, v in self.databases.items()},
+            'pages': {k: serialize_page(v) for k, v in self.pages.items()},
+            'databases': {k: serialize_database(v) for k, v in self.databases.items()},
             'completion_logs': {k: [asdict(log) for log in v] for k, v in self.completion_logs.items()}
         }
     
     @classmethod
     def from_dict(cls, data):
         instance = cls()
-        instance.blocks = {k: Block(**v) for k, v in data.get('blocks', {}).items()}
         
-        # Convert pages with proper Property objects
-        instance.pages = {}
+        # Convert pages
         for k, v in data.get('pages', {}).items():
+            # Handle legacy description field
+            if 'description' in v and 'properties' in v:
+                # Move description to properties if it exists
+                if v['description']:
+                    v['properties']['description'] = {
+                        'id': 'description',
+                        'name': 'Description',
+                        'type': 'text',
+                        'value': v['description'],
+                        'options': None,
+                        'rich_text_content': None
+                    }
+                # Remove the legacy description field
+                del v['description']
+            
+            # Remove other legacy fields that are not part of the Page dataclass
+            legacy_fields = ['repetition_config', 'description']
+            for field in legacy_fields:
+                if field in v:
+                    del v[field]
+            
             # Convert properties to Property objects
             properties = {}
             for prop_id, prop_data in v.get('properties', {}).items():
                 properties[prop_id] = Property(**prop_data)
             v['properties'] = properties
+            
             instance.pages[k] = Page(**v)
         
-        # Convert databases with proper Property objects
-        instance.databases = {}
+        # Convert databases
         for k, v in data.get('databases', {}).items():
             # Convert properties to Property objects
             properties = {}
             for prop_id, prop_data in v.get('properties', {}).items():
                 properties[prop_id] = Property(**prop_data)
             v['properties'] = properties
+            
             instance.databases[k] = Database(**v)
         
-        instance.completion_logs = {k: [CompletionLog(**log) for log in v] for k, v in data.get('completion_logs', {}).items()}
+        # Convert blocks
+        for k, v in data.get('blocks', {}).items():
+            instance.blocks[k] = Block(**v)
+        
+        # Convert completion logs
+        for k, v in data.get('completion_logs', {}).items():
+            instance.completion_logs[k] = [CompletionLog(**log) for log in v]
+        
         return instance
 
 def load_data():
@@ -327,11 +387,21 @@ def create_page():
     # Convert properties to Property objects
     page_properties = {}
     for prop_id, prop_data in properties.items():
+        rich_text_content = prop_data.get('rich_text_content')
+        
+        # Ensure rich_text_content is preserved properly
+        if prop_data['type'] == 'rich_text' and rich_text_content is not None:
+            # For rich text, always preserve the content even if it's an empty string
+            final_rich_text_content = rich_text_content
+        else:
+            final_rich_text_content = None
+            
         page_properties[prop_id] = Property(
             id=prop_id,
             name=prop_data['name'],
             type=prop_data['type'],
-            value=prop_data.get('value')
+            value=prop_data.get('value'),
+            rich_text_content=final_rich_text_content
         )
     
     # Create page
@@ -365,6 +435,7 @@ def create_page():
         data.databases[database_id].pages.append(page_id)
     
     save_data(data)
+    
     return jsonify({'success': True, 'page_id': page_id})
 
 @app.route('/api/update_page', methods=['POST'])
@@ -381,8 +452,26 @@ def update_page():
     
     # Update properties
     for prop_id, prop_data in updates.get('properties', {}).items():
+        rich_text_content = prop_data.get('rich_text_content')
+        
+        # Ensure rich_text_content is preserved properly
+        if prop_data.get('type') == 'rich_text' and rich_text_content is not None:
+            final_rich_text_content = rich_text_content
+        else:
+            final_rich_text_content = None
+            
         if prop_id in page.properties:
             page.properties[prop_id].value = prop_data.get('value')
+            page.properties[prop_id].rich_text_content = final_rich_text_content
+        else:
+            # Create the property if it doesn't exist
+            page.properties[prop_id] = Property(
+                id=prop_id,
+                name=prop_data.get('name', prop_id),
+                type=prop_data.get('type', 'text'),
+                value=prop_data.get('value'),
+                rich_text_content=final_rich_text_content
+            )
     
     # Update title
     if 'title' in updates:
@@ -689,6 +778,33 @@ def navigate_to_database(database_id):
     hierarchy = hierarchy_data.get('hierarchy', []) if hierarchy_data.get('success') else []
     
     return render_template('database.html', database=database, pages=pages, data=data, hierarchy=hierarchy)
+
+@app.route('/api/update_property', methods=['POST'])
+def update_property():
+    data = load_data()
+    
+    page_id = request.json.get('page_id')
+    property_id = request.json.get('property_id')
+    value = request.json.get('value')
+    property_type = request.json.get('type', 'text')
+    
+    if page_id not in data.pages:
+        return jsonify({'success': False, 'error': 'Page not found'})
+    
+    page = data.pages[page_id]
+    
+    # Update the property
+    if property_id in page.properties:
+        if property_type == 'rich_text':
+            page.properties[property_id].value = ''
+            page.properties[property_id].rich_text_content = value if value is not None else ''
+        else:
+            page.properties[property_id].value = value
+            page.properties[property_id].rich_text_content = None
+        page.updated_at = datetime.now().isoformat()
+    
+    save_data(data)
+    return jsonify({'success': True})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

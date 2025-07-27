@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Notion Alternative{% endblock %}</title>
+    <title>{% block title %}Task Manager{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    {% block extra_css %}{% endblock %}
 </head>
 <body>
     <div class="app-container">
@@ -157,6 +156,843 @@
             }
         });
     });
+
+    // Remove old CKEditor and auto-save code - replaced with custom RichTextEditor
+    // Auto-save functionality with debouncing
+    const autoSaveTimers = {};
+    
+    function autoSaveContent(selector) {
+        // Clear existing timer
+        if (autoSaveTimers[selector]) {
+            clearTimeout(autoSaveTimers[selector]);
+        }
+        
+        // Set new timer (save after 2 seconds of no typing)
+        autoSaveTimers[selector] = setTimeout(() => {
+            const content = getRichTextContent(selector);
+            
+            // Determine what type of content this is and save accordingly
+            if (selector === 'pageDescriptionContainer_editor') {
+                // This is a page description
+                autoSavePageDescription(content);
+            } else if (selector.startsWith('modalProp_')) {
+                // This is a database property
+                autoSaveDatabaseProperty(selector, content);
+            } else if (selector === 'modalPageDescription') {
+                // This is a modal page description
+                autoSaveModalDescription(content);
+            }
+        }, 2000); // 2 second delay
+    }
+
+    function autoSavePageDescription(content) {
+        if (!currentPageId) return;
+        
+        fetch('/api/update_page', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                page_id: currentPageId,
+                updates: {
+                    properties: {
+                        description: {
+                            name: 'Description',
+                            type: 'rich_text',
+                            value: '',
+                            rich_text_content: content
+                        }
+                    }
+                }
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Page description auto-saved');
+                showAutoSaveIndicator('Page description saved');
+            }
+        })
+        .catch(error => {
+            console.error('Error auto-saving page description:', error);
+            showAutoSaveIndicator('Save failed', true);
+        });
+    }
+
+    function autoSaveDatabaseProperty(selector, content) {
+        // Extract property index from selector
+        const match = selector.match(/modalProp_(\d+)/);
+        if (!match) return;
+        
+        const propIndex = match[1];
+        const databaseId = getCurrentDatabaseId();
+        
+        if (!databaseId) return;
+        
+        // Get the property definition
+        fetch(`/api/get_database_data/${databaseId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const database = data.database;
+                    const properties = Object.values(database.properties);
+                    const property = properties[propIndex];
+                    
+                    if (property) {
+                        // Save the property value
+                        savePropertyValue(databaseId, property.id, content, 'rich_text');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error auto-saving property:', error);
+            });
+    }
+
+    function autoSaveModalDescription(content) {
+        // This would be called when editing a page description in a modal
+        // For now, we'll just log it
+        console.log('Modal description auto-saved:', content);
+        showAutoSaveIndicator('Description saved');
+    }
+
+    function savePropertyValue(databaseId, propertyId, value, type) {
+        // Get the current page ID from the modal context
+        const modal = document.querySelector('.modal-overlay.active');
+        if (!modal) return;
+        
+        // For now, we'll save to a temporary storage
+        // In a real implementation, you'd need to track which page is being edited
+        console.log('Saving property:', propertyId, 'value:', value, 'type:', type);
+        
+        // Show auto-save indicator
+        showAutoSaveIndicator('Property saved');
+    }
+
+    function getCurrentDatabaseId() {
+        // Try to get the current database ID from the global variable
+        if (window.currentDatabaseId) {
+            return window.currentDatabaseId;
+        }
+        
+        // Fallback: try to get from page context
+        const databaseContainer = document.querySelector('.database-container');
+        if (databaseContainer) {
+            return databaseContainer.dataset.databaseId;
+        }
+        return null;
+    }
+
+    function showAutoSaveIndicator(message, isError = false) {
+        // Create or update auto-save indicator
+        let indicator = document.getElementById('autoSaveIndicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'autoSaveIndicator';
+            document.body.appendChild(indicator);
+        }
+        
+        indicator.textContent = message;
+        indicator.className = isError ? 'error' : 'success';
+        indicator.classList.add('show');
+        
+        // Hide after 3 seconds
+        setTimeout(() => {
+            indicator.classList.remove('show');
+        }, 3000);
+    }
+
+    // Initialize auto-save for form inputs
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add auto-save to all form inputs
+        const inputs = document.querySelectorAll('input[type="text"], input[type="number"], textarea, select');
+        inputs.forEach(input => {
+            if (!input.classList.contains('ckeditor')) {
+                input.addEventListener('input', function() {
+                    autoSaveFormInput(this);
+                });
+            }
+        });
+    });
+
+    function autoSaveFormInput(input) {
+        const inputId = input.id;
+        const inputValue = input.value;
+        const inputType = input.type || 'text';
+        
+        // Clear existing timer
+        if (autoSaveTimers[inputId]) {
+            clearTimeout(autoSaveTimers[inputId]);
+        }
+        
+        // Set new timer (save after 2 seconds of no typing)
+        autoSaveTimers[inputId] = setTimeout(() => {
+            // Determine what type of input this is and save accordingly
+            if (inputId === 'pageTitle') {
+                autoSavePageTitle(inputValue);
+            } else if (inputId.startsWith('modalProp_')) {
+                autoSaveModalProperty(inputId, inputValue, inputType);
+            }
+        }, 2000); // 2 second delay
+    }
+
+    function autoSavePageTitle(title) {
+        if (!window.currentPageId) return;
+        
+        fetch('/api/update_page', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                page_id: window.currentPageId,
+                updates: {
+                    title: title
+                }
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Page title auto-saved');
+                showAutoSaveIndicator('Page title saved');
+            }
+        })
+        .catch(error => {
+            console.error('Error auto-saving page title:', error);
+            showAutoSaveIndicator('Save failed', true);
+        });
+    }
+
+    function autoSaveModalProperty(inputId, value, type) {
+        // Extract property index from input ID
+        const match = inputId.match(/modalProp_(\d+)/);
+        if (!match) return;
+        
+        const propIndex = match[1];
+        const databaseId = getCurrentDatabaseId();
+        
+        if (!databaseId) return;
+        
+        // Get the property definition
+        fetch(`/api/get_database_data/${databaseId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const database = data.database;
+                    const properties = Object.values(database.properties);
+                    const property = properties[propIndex];
+                    
+                    if (property) {
+                        // Save the property value
+                        savePropertyValue(databaseId, property.id, value, type);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error auto-saving property:', error);
+            });
+    }
+    </script>
+    <!-- Custom Rich Text Editor -->
+    <style>
+        .rich-editor-container {
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #2a2a2a;
+            overflow: hidden;
+        }
+        
+        .rich-editor-toolbar {
+            display: flex;
+            gap: 2px;
+            padding: 8px;
+            background: #333;
+            border-bottom: 1px solid #444;
+            flex-wrap: wrap;
+        }
+        
+        .rich-editor-btn {
+            padding: 6px 10px;
+            background: #444;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .rich-editor-btn:hover {
+            background: #555;
+        }
+        
+        .rich-editor-btn.active {
+            background: #4a9eff;
+        }
+        
+        .rich-editor-btn i {
+            font-size: 14px;
+        }
+        
+        .rich-editor-content {
+            min-height: 200px;
+            padding: 12px;
+            outline: none;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+        
+        .rich-editor-content:focus {
+            background: #2a2a2a;
+        }
+        
+        .rich-editor-content h1,
+        .rich-editor-content h2,
+        .rich-editor-content h3 {
+            margin: 16px 0 8px 0;
+            font-weight: 600;
+        }
+        
+        .rich-editor-content h1 { font-size: 24px; }
+        .rich-editor-content h2 { font-size: 20px; }
+        .rich-editor-content h3 { font-size: 18px; }
+        
+        .rich-editor-content p {
+            margin: 8px 0;
+        }
+        
+        .rich-editor-content ul,
+        .rich-editor-content ol {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        
+        .rich-editor-content blockquote {
+            border-left: 4px solid #4a9eff;
+            margin: 12px 0;
+            padding-left: 12px;
+            color: #ccc;
+        }
+        
+        .rich-editor-content code {
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+        }
+        
+        .rich-editor-content pre {
+            background: #333;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        
+        .rich-editor-content pre code {
+            background: none;
+            padding: 0;
+        }
+    </style>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <script>
+        // Custom Rich Text Editor
+        class RichTextEditor {
+            constructor(selector, options = {}) {
+                this.selector = selector;
+                this.element = document.querySelector(selector);
+                this.options = {
+                    placeholder: options.placeholder || 'Enter description...',
+                    height: options.height || 200,
+                    autoSave: options.autoSave !== false,
+                    autoSaveDelay: options.autoSaveDelay || 2000,
+                    onChange: options.onChange || null
+                };
+                
+                this.autoSaveTimer = null;
+                this.init();
+            }
+            
+            init() {
+                if (!this.element) return;
+                
+                // Create editor container
+                this.container = document.createElement('div');
+                this.container.className = 'rich-editor-container';
+                this.container.style.height = this.options.height + 'px';
+                
+                // Store reference to original element in container
+                this.container.dataset.originalElementId = this.element.id;
+                
+                // Create toolbar
+                this.toolbar = document.createElement('div');
+                this.toolbar.className = 'rich-editor-toolbar';
+                this.createToolbar();
+                
+                // Create content area
+                this.content = document.createElement('div');
+                this.content.className = 'rich-editor-content';
+                this.content.contentEditable = true;
+                this.content.innerHTML = this.element.value || '';
+                this.content.setAttribute('data-placeholder', this.options.placeholder);
+                
+                // Replace original element
+                this.element.parentNode.insertBefore(this.container, this.element);
+                this.container.appendChild(this.toolbar);
+                this.container.appendChild(this.content);
+                this.element.style.display = 'none';
+                
+                // Add event listeners
+                this.addEventListeners();
+                
+                // Set initial content
+                if (this.element.value) {
+                    this.setContent(this.element.value);
+                }
+            }
+            
+            createToolbar() {
+                const tools = [
+                    { name: 'bold', icon: 'fas fa-bold', title: 'Bold' },
+                    { name: 'italic', icon: 'fas fa-italic', title: 'Italic' },
+                    { name: 'underline', icon: 'fas fa-underline', title: 'Underline' },
+                    { name: 'strikethrough', icon: 'fas fa-strikethrough', title: 'Strikethrough' },
+                    { name: 'separator' },
+                    { name: 'h1', icon: 'fas fa-heading', title: 'Heading 1' },
+                    { name: 'h2', icon: 'fas fa-heading', title: 'Heading 2' },
+                    { name: 'h3', icon: 'fas fa-heading', title: 'Heading 3' },
+                    { name: 'separator' },
+                    { name: 'ul', icon: 'fas fa-list-ul', title: 'Bullet List' },
+                    { name: 'ol', icon: 'fas fa-list-ol', title: 'Numbered List' },
+                    { name: 'blockquote', icon: 'fas fa-quote-left', title: 'Quote' },
+                    { name: 'code', icon: 'fas fa-code', title: 'Code' },
+                    { name: 'separator' },
+                    { name: 'undo', icon: 'fas fa-undo', title: 'Undo' },
+                    { name: 'redo', icon: 'fas fa-redo', title: 'Redo' },
+                    { name: 'separator' },
+                    { name: 'save', icon: 'fas fa-save', title: 'Save Now' }
+                ];
+                
+                tools.forEach(tool => {
+                    if (tool.name === 'separator') {
+                        const separator = document.createElement('div');
+                        separator.style.width = '1px';
+                        separator.style.height = '20px';
+                        separator.style.background = '#555';
+                        separator.style.margin = '0 4px';
+                        this.toolbar.appendChild(separator);
+                    } else {
+                        const btn = document.createElement('button');
+                        btn.className = 'rich-editor-btn';
+                        btn.title = tool.title;
+                        btn.innerHTML = `<i class="${tool.icon}"></i>`;
+                        btn.onclick = (e) => {
+                            e.preventDefault();
+                            if (tool.name === 'save') {
+                                this.manualSave();
+                            } else {
+                                this.execCommand(tool.name);
+                            }
+                        };
+                        this.toolbar.appendChild(btn);
+                    }
+                });
+            }
+            
+            execCommand(command) {
+                this.content.focus();
+                
+                switch (command) {
+                    case 'bold':
+                        document.execCommand('bold', false, null);
+                        break;
+                    case 'italic':
+                        document.execCommand('italic', false, null);
+                        break;
+                    case 'underline':
+                        document.execCommand('underline', false, null);
+                        break;
+                    case 'strikethrough':
+                        document.execCommand('strikeThrough', false, null);
+                        break;
+                    case 'h1':
+                        document.execCommand('formatBlock', false, 'h1');
+                        break;
+                    case 'h2':
+                        document.execCommand('formatBlock', false, 'h2');
+                        break;
+                    case 'h3':
+                        document.execCommand('formatBlock', false, 'h3');
+                        break;
+                    case 'ul':
+                        document.execCommand('insertUnorderedList', false, null);
+                        break;
+                    case 'ol':
+                        document.execCommand('insertOrderedList', false, null);
+                        break;
+                    case 'blockquote':
+                        document.execCommand('formatBlock', false, 'blockquote');
+                        break;
+                    case 'code':
+                        const selection = window.getSelection();
+                        if (selection.rangeCount > 0) {
+                            const range = selection.getRangeAt(0);
+                            const code = document.createElement('code');
+                            code.textContent = range.toString();
+                            range.deleteContents();
+                            range.insertNode(code);
+                        }
+                        break;
+                    case 'undo':
+                        document.execCommand('undo', false, null);
+                        break;
+                    case 'redo':
+                        document.execCommand('redo', false, null);
+                        break;
+                }
+                
+                this.updateToolbar();
+                this.triggerChange();
+            }
+            
+            updateToolbar() {
+                const buttons = this.toolbar.querySelectorAll('.rich-editor-btn');
+                buttons.forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                
+                // Update active states based on current selection
+                if (document.queryCommandState('bold')) {
+                    this.toolbar.querySelector('[title="Bold"]').classList.add('active');
+                }
+                if (document.queryCommandState('italic')) {
+                    this.toolbar.querySelector('[title="Italic"]').classList.add('active');
+                }
+                if (document.queryCommandState('underline')) {
+                    this.toolbar.querySelector('[title="Underline"]').classList.add('active');
+                }
+            }
+            
+            addEventListeners() {
+                this.content.addEventListener('input', () => {
+                    this.triggerChange();
+                    this.autoSave();
+                });
+                
+                this.content.addEventListener('keyup', () => {
+                    this.updateToolbar();
+                });
+                
+                this.content.addEventListener('click', () => {
+                    this.updateToolbar();
+                });
+                
+                this.content.addEventListener('focus', () => {
+                    this.container.style.borderColor = '#4a9eff';
+                });
+                
+                this.content.addEventListener('blur', () => {
+                    this.container.style.borderColor = '#444';
+                    // Also save on blur
+                    this.autoSave();
+                });
+                
+                // Add paste event
+                this.content.addEventListener('paste', () => {
+                    setTimeout(() => {
+                        this.triggerChange();
+                        this.autoSave();
+                    }, 100);
+                });
+            }
+            
+            triggerChange() {
+                if (this.options.onChange) {
+                    this.options.onChange(this.getContent());
+                }
+            }
+            
+            autoSave() {
+                if (!this.options.autoSave) return;
+                
+                if (this.autoSaveTimer) {
+                    clearTimeout(this.autoSaveTimer);
+                }
+                
+                this.autoSaveTimer = setTimeout(() => {
+                    const content = this.getContent();
+                    this.saveContent(content);
+                }, this.options.autoSaveDelay);
+            }
+            
+            saveContent(content) {
+                // Update hidden input
+                this.element.value = content;
+                
+                // Determine what type of content this is and save accordingly
+                const selector = this.selector;
+                
+                if (selector === '#pageDescriptionContainer_editor') {
+                    this.autoSavePageDescription(content);
+                } else if (selector.startsWith('#modalProp_')) {
+                    this.autoSaveDatabaseProperty(selector, content);
+                } else if (selector === '#modalPageDescription') {
+                    this.autoSaveModalDescription(content);
+                }
+            }
+            
+            autoSavePageDescription(content) {
+                if (!window.currentPageId) return;
+                
+                fetch('/api/update_page', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        page_id: window.currentPageId,
+                        updates: {
+                            properties: {
+                                description: {
+                                    name: 'Description',
+                                    type: 'rich_text',
+                                    value: '',
+                                    rich_text_content: content
+                                }
+                            }
+                        }
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        this.showAutoSaveIndicator('Page description saved');
+                    } else {
+                        this.showAutoSaveIndicator('Save failed', true);
+                    }
+                })
+                .catch(error => {
+                    this.showAutoSaveIndicator('Save failed', true);
+                });
+            }
+            
+            autoSaveDatabaseProperty(selector, content) {
+                const match = selector.match(/modalProp_(\d+)/);
+                if (!match) return;
+                
+                const propIndex = match[1];
+                const databaseId = this.getCurrentDatabaseId();
+                
+                if (!databaseId) return;
+                
+                fetch(`/api/get_database_data/${databaseId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const database = data.database;
+                            const properties = Object.values(database.properties);
+                            const property = properties[propIndex];
+                            
+                            if (property) {
+                                this.savePropertyValue(databaseId, property.id, content, 'rich_text');
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        // Handle error silently
+                    });
+            }
+            
+            autoSaveModalDescription(content) {
+                this.showAutoSaveIndicator('Description saved');
+            }
+            
+            savePropertyValue(databaseId, propertyId, value, type) {
+                const modal = document.querySelector('.modal-overlay.active');
+                if (!modal) return;
+                
+                this.showAutoSaveIndicator('Property saved');
+            }
+            
+            getCurrentDatabaseId() {
+                if (window.currentDatabaseId) {
+                    return window.currentDatabaseId;
+                }
+                
+                const databaseContainer = document.querySelector('.database-container');
+                if (databaseContainer) {
+                    return databaseContainer.dataset.databaseId;
+                }
+                return null;
+            }
+            
+            showAutoSaveIndicator(message, isError = false) {
+                let indicator = document.getElementById('autoSaveIndicator');
+                if (!indicator) {
+                    indicator = document.createElement('div');
+                    indicator.id = 'autoSaveIndicator';
+                    document.body.appendChild(indicator);
+                }
+                
+                indicator.textContent = message;
+                indicator.className = isError ? 'error' : 'success';
+                indicator.classList.add('show');
+                
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 3000);
+            }
+            
+            getContent() {
+                return this.content.innerHTML;
+            }
+            
+            setContent(content) {
+                this.content.innerHTML = content;
+                this.element.value = content;
+            }
+            
+            destroy() {
+                if (this.container && this.container.parentNode) {
+                    this.container.parentNode.removeChild(this.container);
+                }
+                this.element.style.display = '';
+            }
+        }
+
+        // Initialize rich text editors
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            // Initialize any existing rich text editors
+            const richTextElements = document.querySelectorAll('textarea[data-rich-text="true"], .rich-text-editor');
+            
+            richTextElements.forEach(element => {
+                new RichTextEditor(`#${element.id}`, {
+                    placeholder: element.getAttribute('data-placeholder') || 'Enter description...',
+                    height: parseInt(element.getAttribute('data-height')) || 200,
+                    autoSave: true,
+                    autoSaveDelay: 2000
+                });
+            });
+        });
+
+        // Global functions for compatibility
+        function initRichTextEditor(selector, placeholder = 'Enter description...') {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.setAttribute('data-rich-text', 'true');
+                element.setAttribute('data-placeholder', placeholder);
+                new RichTextEditor(selector, {
+                    placeholder: placeholder,
+                    height: 200,
+                    autoSave: true,
+                    autoSaveDelay: 2000
+                });
+            } else {
+                console.error('Element not found for selector:', selector);
+            }
+        }
+
+        function getRichTextContent(selector) {
+            console.log('Getting rich text content for selector:', selector);
+            
+            // First try to find the original element
+            let element = document.querySelector(selector);
+            if (element) {
+                console.log('Found original element:', element.id);
+                // Check if this element has a rich editor container
+                const container = element.parentNode.querySelector('.rich-editor-container');
+                if (container) {
+                    const contentDiv = container.querySelector('.rich-editor-content');
+                    if (contentDiv) {
+                        const content = contentDiv.innerHTML;
+                        console.log('Retrieved content from rich editor:', content);
+                        return content;
+                    }
+                }
+                // Fallback to element value
+                const value = element.value || '';
+                console.log('Retrieved content from element value:', value);
+                return value;
+            }
+            
+            // If original element not found, try to find the rich editor container by stored reference
+            console.log('Original element not found, searching for rich editor container...');
+            const containers = document.querySelectorAll('.rich-editor-container');
+            for (let container of containers) {
+                const originalElementId = container.dataset.originalElementId;
+                if (originalElementId === selector.replace('#', '')) {
+                    const contentDiv = container.querySelector('.rich-editor-content');
+                    if (contentDiv) {
+                        const content = contentDiv.innerHTML;
+                        console.log('Retrieved content from rich editor container:', content);
+                        return content;
+                    }
+                }
+            }
+            
+            console.log('Element not found for selector:', selector);
+            return '';
+        }
+
+        function setRichTextContent(selector, content) {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.value = content;
+                // Update the rich editor if it exists
+                const container = element.parentNode.querySelector('.rich-editor-container');
+                if (container) {
+                    const contentDiv = container.querySelector('.rich-editor-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = content;
+                    }
+                }
+            }
+        }
+
+        function destroyRichTextEditor(selector) {
+            const element = document.querySelector(selector);
+            if (element) {
+                const container = element.parentNode.querySelector('.rich-editor-container');
+                if (container) {
+                    container.remove();
+                    element.style.display = '';
+                }
+            }
+        }
+
+        function initRichTextEditorForModal() {
+            const modal = document.querySelector('.modal-overlay.active');
+            if (modal) {
+                const richTextElements = modal.querySelectorAll('textarea[data-rich-text="true"], .rich-text-editor');
+                console.log('Found rich text elements in modal:', richTextElements.length);
+                
+                richTextElements.forEach(element => {
+                    console.log('Processing element:', element.id);
+                    if (!element.parentNode.querySelector('.rich-editor-container')) {
+                        console.log('Initializing rich text editor for:', element.id);
+                        new RichTextEditor(`#${element.id}`, {
+                            placeholder: element.getAttribute('data-placeholder') || 'Enter description...',
+                            height: 200,
+                            autoSave: false, // Disable auto-save for modal editors
+                            autoSaveDelay: 2000
+                        });
+                    } else {
+                        console.log('Rich editor already exists for:', element.id);
+                    }
+                });
+            }
+        }
     </script>
 </body>
 </html> 

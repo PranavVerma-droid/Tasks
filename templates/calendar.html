@@ -245,7 +245,8 @@ function showTaskDetails(page, date) {
                         }
                         
                         // Add description if it exists
-                        const description = pageData.properties.description ? pageData.properties.description.value : '';
+                        const description = pageData.properties.description ? 
+                            (pageData.properties.description.rich_text_content || pageData.properties.description.value) : '';
                         if (description) {
                             detailsHtml += `
                                 <div class="task-description">${description}</div>
