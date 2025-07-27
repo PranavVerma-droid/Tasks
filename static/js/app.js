@@ -264,66 +264,79 @@ function renderDatabaseTable(databaseId, pages, database) {
     const tableBody = document.getElementById(`databaseBody_${databaseId}`);
     if (!tableBody) return;
     
+    // Check if any page has a non-empty description
+    let hasDescription = false;
+    pages.forEach(page => {
+        const desc = page.properties.description;
+        if (desc && (desc.rich_text_content || desc.value)) {
+            hasDescription = true;
+        }
+    });
+
     tableBody.innerHTML = '';
-    
     pages.forEach(page => {
         const row = document.createElement('div');
         row.className = 'database-table-row';
         row.setAttribute('data-page-id', page.id);
-        
-        // Title cell with description
+        // Title cell
         const titleCell = document.createElement('div');
         titleCell.className = 'table-cell table-cell-title';
-        
-        const description = page.properties.description ? page.properties.description.value : '';
-        let descriptionHtml = '';
-        
-        if (description) {
-            const isLongDescription = description.length > 50;
-            const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
-            const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
-            const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
-            
-            descriptionHtml = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
-        }
-        
+        const hasNestedDatabases = page.databases && page.databases.length > 0;
+        const nestedIndicator = hasNestedDatabases ? '<i class="fas fa-folder-tree nested-indicator" title="Has nested databases"></i>' : '';
         titleCell.innerHTML = `
-            <div class="page-title-editable" contenteditable="true" 
-                 onblur="updatePageTitle('${page.id}', this.textContent)">
-                ${page.title}
+            <div class="page-title-container">
+                <div class="page-title-editable" contenteditable="true" onblur="updatePageTitle('${page.id}', this.textContent)">${page.title}</div>
+                ${nestedIndicator}
             </div>
-            ${descriptionHtml}
         `;
         row.appendChild(titleCell);
-        
+        // Description cell
+        if (hasDescription) {
+            const descCell = document.createElement('div');
+            descCell.className = 'table-cell';
+            const desc = page.properties.description;
+            if (desc && (desc.rich_text_content || desc.value)) {
+                const description = desc.rich_text_content || desc.value;
+                const isLongDescription = description.length > 50;
+                const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
+                const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
+                const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
+                descCell.innerHTML = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
+            } else {
+                descCell.innerHTML = '<span class="empty-property">-</span>';
+            }
+            row.appendChild(descCell);
+        }
         // Property cells
         Object.values(database.properties).forEach(prop => {
             const cell = document.createElement('div');
             cell.className = 'table-cell';
-            
             const pageProp = page.properties[prop.id];
             if (pageProp) {
                 cell.innerHTML = renderPropertyValue(pageProp, prop);
             } else {
                 cell.innerHTML = '<span class="empty-property">-</span>';
             }
-            
             row.appendChild(cell);
         });
-        
         // Actions cell
         const actionsCell = document.createElement('div');
         actionsCell.className = 'table-cell table-cell-actions';
         actionsCell.innerHTML = `
-            <button class="btn btn-sm btn-secondary" onclick="editPage('${page.id}')">
+            <button class="btn btn-sm btn-secondary" onclick="editPage('${page.id}')" title="Edit page">
                 <i class="fas fa-edit"></i>
             </button>
-            <button class="btn btn-sm btn-danger" onclick="deletePage('${page.id}')">
+            <button class="btn btn-sm btn-info" onclick="viewPageDetails('${page.id}')" title="View details">
+                <i class="fas fa-eye"></i>
+            </button>
+            <button class="btn btn-sm btn-primary" onclick="openPage('${page.id}')" title="Open page">
+                <i class="fas fa-external-link-alt"></i>
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="deletePage('${page.id}')" title="Delete page">
                 <i class="fas fa-trash"></i>
             </button>
         `;
         row.appendChild(actionsCell);
-        
         tableBody.appendChild(row);
     });
 }

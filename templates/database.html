@@ -33,18 +33,62 @@
     <div class="database-header">
         <h2 class="database-title">{{ database.name }}</h2>
     </div>
-    
+    {% set col_count = 2 + database.properties|length + 1 %}
     <div class="database-table">
-        <div class="database-table-header">
+        <div class="database-table-header" style="display: grid; grid-template-columns: 300px 200px{% for prop in database.properties %} 1fr{% endfor %} 100px;">
             <div class="table-cell table-cell-title">Title</div>
+            <div class="table-cell">Description</div>
             {% for prop_id, prop in database.properties.items() %}
             <div class="table-cell">{{ prop.name }}</div>
             {% endfor %}
             <div class="table-cell table-cell-actions">Actions</div>
         </div>
-        
-        <div class="database-table-body" id="databaseBody_{{ database.id }}">
-            <!-- Pages will be loaded here via JavaScript -->
+        <div class="database-table-body">
+            {% for page in pages %}
+            <div class="database-table-row" style="display: grid; grid-template-columns: 300px 200px{% for prop in database.properties %} 1fr{% endfor %} 100px;" data-page-id="{{ page.id }}">
+                <div class="table-cell table-cell-title">
+                    <div class="page-title-container">
+                        <div class="page-title-editable" contenteditable="true" onblur="updatePageTitle('{{ page.id }}', this.textContent)">
+                            {{ page.title }}
+                        </div>
+                        {% if page.databases and page.databases|length > 0 %}
+                        <i class="fas fa-folder-tree nested-indicator" title="Has nested databases"></i>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="table-cell">
+                    {% if page.properties.description and (page.properties.description.rich_text_content or page.properties.description.value) %}
+                        <div class="page-description">{{ page.properties.description.rich_text_content or page.properties.description.value }}</div>
+                    {% else %}
+                        <span class="empty-property">Empty</span>
+                    {% endif %}
+                </div>
+                {% for prop_id, prop in database.properties.items() %}
+                <div class="table-cell">
+                    {% set pageProp = page.properties[prop_id] %}
+                    {% if pageProp %}
+                        {{ render_property_value(pageProp, prop) | safe }}
+                    {% else %}
+                        <span class="empty-property">-</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                <div class="table-cell table-cell-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="editPage('{{ page.id }}')" title="Edit page">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="viewPageDetails('{{ page.id }}')" title="View details">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-primary" onclick="openPage('{{ page.id }}')" title="Open page">
+                        <i class="fas fa-external-link-alt"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deletePage('{{ page.id }}')" title="Delete page">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
         </div>
     </div>
 </div>
@@ -63,7 +107,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function loadDatabaseData(databaseId) {
     fetch(`/api/get_database_data/${databaseId}`)
         .then(response => response.json())
-        .then(data => {
+        .then data => {
             if (data.success) {
                 renderDatabaseTable(databaseId, data.pages, data.database);
             }

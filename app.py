@@ -774,7 +774,27 @@ def navigate_to_database(database_id):
     hierarchy_data = json.loads(hierarchy_response.get_data(as_text=True))
     hierarchy = hierarchy_data.get('hierarchy', []) if hierarchy_data.get('success') else []
     
-    return render_template('database.html', database=database, pages=pages, data=data, hierarchy=hierarchy)
+    return render_template('database.html', database=database, pages=pages, data=data, hierarchy=hierarchy, render_property_value=render_property_value)
+
+def render_property_value(pageProp, propDef):
+    if propDef.type == 'text':
+        return f"<span>{pageProp.value or ''}</span>"
+    elif propDef.type == 'rich_text':
+        richContent = pageProp.rich_text_content or pageProp.value or ''
+        if richContent:
+            return f'<div class="rich-text-preview">{richContent}</div>'
+        return '<span class="empty-property">-</span>'
+    elif propDef.type == 'date':
+        if pageProp.value and isinstance(pageProp.value, dict):
+            dateValue = pageProp.value.get('start_date') or pageProp.value.get('end_date') or ''
+            return f"<span>{dateValue}</span>"
+        return f"<span>{pageProp.value or ''}</span>"
+    elif propDef.type in ['select', 'status']:
+        return f'<span class="property-tag">{pageProp.value or ''}</span>'
+    elif propDef.type == 'number':
+        return f"<span>{pageProp.value or ''}</span>"
+    else:
+        return f"<span>{pageProp.value or ''}</span>"
 
 @app.route('/api/update_property', methods=['POST'])
 def update_property():
