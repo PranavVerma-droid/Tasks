@@ -981,6 +981,40 @@ body {
     border-left-color: #666;
 }
 
+/* Calendar Tree View Styles */
+.calendar-tree-view {
+    margin-bottom: 24px;
+    background: #232323;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid #333;
+}
+.calendar-tree-view h4 {
+    color: #4a9eff;
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+.calendar-db-tree-item {
+    margin-bottom: 8px;
+    padding: 8px;
+    background: #222;
+    border-radius: 6px;
+    border: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.calendar-db-tree-item label {
+    font-size: 14px;
+    color: #e0e0e0;
+    cursor: pointer;
+}
+.calendar-db-tree-item input[type="checkbox"] {
+    accent-color: #4a9eff;
+    margin-right: 8px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .page-description.has-full-text:hover::after {
@@ -1913,4 +1947,4 @@ body {
 #autoSaveIndicator.error {
     background: #ff4444;
     color: #ffffff;
-} 
+}

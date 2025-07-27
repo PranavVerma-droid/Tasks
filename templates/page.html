@@ -47,9 +47,18 @@
     </div>
     
     <div class="page-content">
-        <!-- Page Description Section with Rich Text Editor -->
+        <!-- Editable Page Description Section -->
         <div id="pageDescriptionContainer">
-            <!-- Description will be loaded here via JavaScript -->
+            <div class="description-toggle-container">
+                <div class="description-toggle-header" onclick="toggleDescription('pageDescriptionContainer')">
+                    <i class="fas fa-chevron-down toggle-icon"></i>
+                    <span class="toggle-text">Description</span>
+                    <span class="toggle-indicator">{{ page.properties.description.rich_text_content|default('')|length > 0 and 'Has content' or 'Empty' }}</span>
+                </div>
+                <div class="description-content expanded" id="pageDescriptionContainer_content">
+                    <div id="pageDescriptionEditable" class="rich-text-editor" contenteditable="true" onblur="saveInlineDescription()">{{ page.properties.description.rich_text_content|safe }}</div>
+                </div>
+            </div>
         </div>
         
         <!-- Existing databases -->
@@ -1052,5 +1061,39 @@ function showPageDetailsModal(page) {
 function closeModal() {
     document.getElementById('modalOverlay').classList.remove('active');
 }
+
+function saveInlineDescription() {
+    const content = document.getElementById('pageDescriptionEditable').innerHTML;
+    fetch('/api/update_page', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            page_id: window.currentPageId,
+            updates: {
+                properties: {
+                    description: {
+                        name: 'Description',
+                        type: 'rich_text',
+                        value: '',
+                        rich_text_content: content
+                    }
+                }
+            }
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAutoSaveIndicator('Description saved');
+        } else {
+            showAutoSaveIndicator('Save failed', true);
+        }
+    })
+    .catch(error => {
+        showAutoSaveIndicator('Save failed', true);
+    });
+}
 </script>
-{% endblock %} 
+{% endblock %}
