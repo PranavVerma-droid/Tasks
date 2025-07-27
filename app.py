@@ -387,22 +387,22 @@ def create_page():
     # Convert properties to Property objects
     page_properties = {}
     for prop_id, prop_data in properties.items():
-        rich_text_content = prop_data.get('rich_text_content')
-        
-        # Ensure rich_text_content is preserved properly
-        if prop_data['type'] == 'rich_text' and rich_text_content is not None:
-            # For rich text, always preserve the content even if it's an empty string
-            final_rich_text_content = rich_text_content
+        if prop_data['type'] == 'rich_text':
+            page_properties[prop_id] = Property(
+                id=prop_id,
+                name=prop_data['name'],
+                type='rich_text',
+                value='',
+                rich_text_content=prop_data.get('rich_text_content', '')
+            )
         else:
-            final_rich_text_content = None
-            
-        page_properties[prop_id] = Property(
-            id=prop_id,
-            name=prop_data['name'],
-            type=prop_data['type'],
-            value=prop_data.get('value'),
-            rich_text_content=final_rich_text_content
-        )
+            page_properties[prop_id] = Property(
+                id=prop_id,
+                name=prop_data['name'],
+                type=prop_data['type'],
+                value=prop_data.get('value'),
+                rich_text_content=None
+            )
     
     # Create page
     page = Page(
@@ -452,25 +452,22 @@ def update_page():
     
     # Update properties
     for prop_id, prop_data in updates.get('properties', {}).items():
-        rich_text_content = prop_data.get('rich_text_content')
-        
-        # Ensure rich_text_content is preserved properly
-        if prop_data.get('type') == 'rich_text' and rich_text_content is not None:
-            final_rich_text_content = rich_text_content
+        # Create or update the property
+        if prop_data.get('type') == 'rich_text':
+            page.properties[prop_id] = Property(
+                id=prop_id,
+                name=prop_data.get('name', prop_id),
+                type='rich_text',
+                value='',
+                rich_text_content=prop_data.get('rich_text_content', '')
+            )
         else:
-            final_rich_text_content = None
-            
-        if prop_id in page.properties:
-            page.properties[prop_id].value = prop_data.get('value')
-            page.properties[prop_id].rich_text_content = final_rich_text_content
-        else:
-            # Create the property if it doesn't exist
             page.properties[prop_id] = Property(
                 id=prop_id,
                 name=prop_data.get('name', prop_id),
                 type=prop_data.get('type', 'text'),
                 value=prop_data.get('value'),
-                rich_text_content=final_rich_text_content
+                rich_text_content=None
             )
     
     # Update title
@@ -802,9 +799,18 @@ def update_property():
             page.properties[property_id].value = value
             page.properties[property_id].rich_text_content = None
         page.updated_at = datetime.now().isoformat()
+    else:
+        page.properties[property_id] = Property(
+            id=property_id,
+            name=property_id,
+            type=property_type,
+            value='' if property_type == 'rich_text' else value,
+            rich_text_content=value if property_type == 'rich_text' else None
+        )
+        page.updated_at = datetime.now().isoformat()
     
     save_data(data)
     return jsonify({'success': True})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    app.run(debug=True, host='0.0.0.0', port=5000)

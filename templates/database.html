@@ -168,7 +168,7 @@ function renderPropertyValue(pageProp, propDef) {
         case 'text':
             return `<span>${pageProp.value || ''}</span>`;
         case 'rich_text':
-            const richContent = pageProp.rich_text_content || pageProp.value || '';
+            const richContent = pageProp.rich_text_content || '';
             if (richContent) {
                 return `<div class="rich-text-preview">${richContent}</div>`;
             }
@@ -482,8 +482,136 @@ function showPageDetailsModal(page) {
 }
 
 function editPage(pageId) {
-    // Implementation for editing page properties
-    console.log('Edit page:', pageId);
+    // Load page data and show edit modal
+    fetch(`/api/get_page_data/${pageId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const page = data.page;
+                showPageEditModal(page);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading page data:', error);
+        });
+}
+
+function showPageEditModal(page) {
+    let propertiesHtml = '';
+    Object.values(page.properties).forEach((prop, idx) => {
+        if (prop.type === 'rich_text') {
+            propertiesHtml += `
+                <div class="form-group" data-property-id="${prop.id}" data-property-type="${prop.type}">
+                    <label for="editProp_${idx}">${prop.name}</label>
+                    <textarea id="editProp_${idx}" data-rich-text="true" data-placeholder="Edit ${prop.name.toLowerCase()}...">${prop.rich_text_content || ''}</textarea>
+                </div>
+            `;
+        } else {
+            propertiesHtml += `
+                <div class="form-group" data-property-id="${prop.id}" data-property-type="${prop.type}">
+                    <label for="editProp_${idx}">${prop.name}</label>
+                    <input type="text" id="editProp_${idx}" class="form-control" value="${prop.value || ''}" placeholder="Edit ${prop.name.toLowerCase()}...">
+                </div>
+            `;
+        }
+    });
+    
+    const modalContent = `
+        <div class="form-group">
+            <label for="editPageTitle">Page Title</label>
+            <input type="text" id="editPageTitle" class="form-control" value="${page.title}">
+        </div>
+        ${propertiesHtml}
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="confirmEditPage('${page.id}')">Save Changes</button>
+        </div>
+    `;
+    
+    document.getElementById('modalTitle').textContent = 'Edit Page';
+    document.getElementById('modalContent').innerHTML = modalContent;
+    document.getElementById('modalOverlay').classList.add('active');
+    
+    // Initialize rich text editors for all rich_text fields
+    setTimeout(() => {
+        const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]');
+        console.log('Found rich text fields to initialize:', richTextFields.length);
+        richTextFields.forEach(el => {
+            console.log('Initializing rich text editor for:', el.id);
+            initRichTextEditor('#' + el.id, el.getAttribute('data-placeholder') || 'Edit...');
+        });
+    }, 300);
+}
+
+function confirmEditPage(pageId) {
+    const newTitle = document.getElementById('editPageTitle').value;
+    const modal = document.getElementById('modalContent');
+    const formGroups = modal.querySelectorAll('.form-group[data-property-id]');
+    const updates = { title: newTitle, properties: {} };
+    
+    formGroups.forEach((group) => {
+        const propertyId = group.getAttribute('data-property-id');
+        const propertyType = group.getAttribute('data-property-type');
+        const label = group.querySelector('label');
+        const propertyName = label ? label.textContent.replace(':', '').trim() : propertyId;
+        
+        if (propertyType === 'rich_text') {
+            const textarea = group.querySelector('textarea[data-rich-text="true"]');
+            if (textarea) {
+                console.log('Processing rich text field:', textarea.id);
+                let value = getRichTextContent(textarea.id);
+                console.log('Rich text content retrieved:', value);
+                
+                // Clean up placeholder content
+                if (value === `<p>Edit ${propertyName.toLowerCase()}...</p>` || value === '<p></p>') {
+                    value = '';
+                }
+                
+                updates.properties[propertyId] = {
+                    name: propertyName,
+                    type: 'rich_text',
+                    value: '',
+                    rich_text_content: value
+                };
+            }
+        } else {
+            const input = group.querySelector('input.form-control');
+            if (input) {
+                updates.properties[propertyId] = {
+                    name: propertyName,
+                    type: propertyType,
+                    value: input.value
+                };
+            }
+        }
+    });
+    
+    console.log('Updates being sent:', updates);
+    
+    fetch('/api/update_page', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            page_id: pageId,
+            updates: updates
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeModal();
+            location.reload();
+        } else {
+            console.error('Update failed:', data);
+            alert('Failed to update page: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error updating page:', error);
+        alert('Error updating page');
+    });
 }
 
 function deletePage(pageId) {
@@ -694,4 +822,4 @@ function closeModal() {
     document.getElementById('modalOverlay').classList.remove('active');
 }
 </script>
-{% endblock %} 
+{% endblock %}

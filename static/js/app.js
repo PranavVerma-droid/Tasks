@@ -89,15 +89,15 @@ function createDatabaseWithProperties(name, properties) {
 
 function createPageWithProperties(databaseId, title, properties) {
     const propertyObjects = {};
-    
     Object.keys(properties).forEach(propId => {
+        const prop = properties[propId];
         propertyObjects[propId] = {
-            name: properties[propId].name,
-            type: properties[propId].type,
-            value: properties[propId].value
+            name: prop.name,
+            type: prop.type,
+            value: prop.type === 'rich_text' ? '' : prop.value,
+            rich_text_content: prop.type === 'rich_text' ? prop.rich_text_content : undefined
         };
     });
-    
     return fetch('/api/create_page', {
         method: 'POST',
         headers: {
@@ -154,31 +154,32 @@ function calculateRepetitionDates(startDate, repetitionType, repetitionConfig) {
 }
 
 // Property rendering functions
-function renderPropertyValue(property, propertyDefinition) {
-    if (!property || !property.value) {
-        return '<span class="empty-property">-</span>';
-    }
-    
-    switch (propertyDefinition.type) {
+function renderPropertyValue(pageProp, propDef) {
+    switch (propDef.type) {
         case 'text':
-            return `<span>${property.value}</span>`;
-            
+            return `<span>${pageProp.value || ''}</span>`;
+        case 'rich_text':
+            const richContent = pageProp.rich_text_content || '';
+            if (richContent) {
+                return `<div class="rich-text-preview">${richContent}</div>`;
+            }
+            return `<span class="empty-property">-</span>`;
         case 'date':
-            if (typeof property.value === 'object') {
-                const dateValue = property.value.start_date || property.value.end_date || '';
+            if (typeof pageProp.value === 'object') {
+                const dateValue = pageProp.value.start_date || pageProp.value.end_date || '';
                 return `<span>${dateValue}</span>`;
             }
-            return `<span>${property.value}</span>`;
+            return `<span>${pageProp.value}</span>`;
             
         case 'select':
         case 'status':
-            return `<span class="property-tag">${property.value}</span>`;
+            return `<span class="property-tag">${pageProp.value}</span>`;
             
         case 'number':
-            return `<span>${property.value}</span>`;
+            return `<span>${pageProp.value}</span>`;
             
         default:
-            return `<span>${property.value}</span>`;
+            return `<span>${pageProp.value}</span>`;
     }
 }
 
@@ -187,6 +188,8 @@ function renderPropertyEditor(property, propertyDefinition) {
         case 'text':
             return `<input type="text" class="form-control" value="${property.value || ''}" 
                            onchange="updateProperty('${property.id}', 'text', this.value)">`;
+        case 'rich_text':
+            return `<textarea class="form-control" data-rich-text="true" data-placeholder="Edit ${property.name.toLowerCase()}...">${property.rich_text_content || ''}</textarea>`;
             
         case 'date':
             const dateValue = typeof property.value === 'object' ? 
@@ -218,28 +221,32 @@ function renderPropertyEditor(property, propertyDefinition) {
 
 // Property update functions
 function updateProperty(propertyId, type, value) {
-    // Persist property update via API
     if (!window.currentPageId) {
         console.error('No currentPageId set');
         return;
+    }
+    let payload = {
+        page_id: window.currentPageId,
+        property_id: propertyId,
+        type: type
+    };
+    if (type === 'rich_text') {
+        payload.value = '';
+        payload.rich_text_content = value;
+    } else {
+        payload.value = value;
     }
     fetch('/api/update_property', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            page_id: window.currentPageId,
-            property_id: propertyId,
-            value: value,
-            type: type
-        })
+        body: JSON.stringify(payload)
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             console.log('Property updated and persisted');
-            // Reload database table if currentDatabaseId is set
             if (window.currentDatabaseId) {
                 loadDatabaseData(window.currentDatabaseId);
             }
@@ -361,45 +368,155 @@ function editPage(pageId) {
         });
 }
 
+// Global Rich Text Editor and Modal Edit Functions
+
+// Function to get rich text content - works with both selector strings and element IDs
+function getRichTextContent(selectorOrId) {
+    let element = null;
+    
+    if (typeof selectorOrId === 'string') {
+        if (selectorOrId.startsWith('#')) {
+            element = document.querySelector(selectorOrId);
+        } else {
+            element = document.getElementById(selectorOrId);
+        }
+    } else if (selectorOrId instanceof HTMLElement) {
+        element = selectorOrId;
+    }
+    
+    if (element) {
+        // Check if it's a rich text editor with container
+        const container = element.parentNode.querySelector('.rich-editor-container');
+        if (container) {
+            const contentDiv = container.querySelector('.rich-editor-content');
+            if (contentDiv) {
+                return contentDiv.innerHTML;
+            }
+        }
+        // Fallback to textarea value
+        return element.value || '';
+    }
+    return '';
+}
+
+// Function to set rich text content
+function setRichTextContent(selectorOrId, content) {
+    let element = null;
+    
+    if (typeof selectorOrId === 'string') {
+        if (selectorOrId.startsWith('#')) {
+            element = document.querySelector(selectorOrId);
+        } else {
+            element = document.getElementById(selectorOrId);
+        }
+    }
+    
+    if (element) {
+        const container = element.parentNode.querySelector('.rich-editor-container');
+        if (container) {
+            const contentDiv = container.querySelector('.rich-editor-content');
+            if (contentDiv) {
+                contentDiv.innerHTML = content;
+                return;
+            }
+        }
+        element.value = content;
+    }
+}
+
+// Fixed function to show page edit modal with proper rich text initialization
 function showPageEditModal(page) {
     let propertiesHtml = '';
-    
-    Object.values(page.properties).forEach(prop => {
-        propertiesHtml += `
-            <div class="form-group">
-                <label>${prop.name}</label>
-                ${renderPropertyEditor(prop, { type: prop.type, options: prop.options })}
-            </div>
-        `;
+    Object.values(page.properties).forEach((prop, idx) => {
+        if (prop.name === 'Description') {
+            return; // Skip description here as it's handled separately in page view
+        }
+        
+        if (prop.type === 'rich_text') {
+            propertiesHtml += `
+                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
+                    <label for="editProp_${idx}">${prop.name}</label>
+                    <textarea id="editProp_${idx}" data-rich-text="true" data-placeholder="Edit ${prop.name.toLowerCase()}...">${prop.rich_text_content || prop.value || ''}</textarea>
+                </div>
+            `;
+        } else {
+            propertiesHtml += `
+                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
+                    <label for="editProp_${idx}">${prop.name}</label>
+                    <input type="text" id="editProp_${idx}" class="form-control" value="${prop.value || ''}" placeholder="Edit ${prop.name.toLowerCase()}...">
+                </div>
+            `;
+        }
     });
     
-    showModal('Edit Page', `
+    const modalContent = `
         <div class="form-group">
             <label for="editPageTitle">Page Title</label>
             <input type="text" id="editPageTitle" class="form-control" value="${page.title}">
         </div>
         ${propertiesHtml}
-    `, () => {
-        const newTitle = document.getElementById('editPageTitle').value;
-        updatePage(page.id, newTitle, page.properties);
-    });
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="confirmEditPage('${page.id}')">Save Changes</button>
+        </div>
+    `;
+    
+    document.getElementById('modalTitle').textContent = 'Edit Page';
+    document.getElementById('modalContent').innerHTML = modalContent;
+    document.getElementById('modalOverlay').classList.add('active');
+    
+    // Initialize rich text editors for all rich_text fields with a longer delay
+    setTimeout(() => {
+        const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]');
+        console.log('Found rich text fields:', richTextFields.length);
+        richTextFields.forEach(el => {
+            console.log('Initializing rich text editor for:', el.id);
+            initRichTextEditor('#' + el.id, el.getAttribute('data-placeholder') || 'Edit...');
+        });
+    }, 300); // Increased delay to ensure modal is fully rendered
 }
 
-function updatePage(pageId, title, properties) {
-    const updates = {
-        title: title,
-        properties: {}
-    };
+// Fixed function to confirm page edit with proper rich text handling
+function confirmEditPage(pageId) {
+    const newTitle = document.getElementById('editPageTitle').value;
+    const modal = document.getElementById('modalContent');
+    const formGroups = modal.querySelectorAll('.form-group[data-property-id]');
+    const updates = { title: newTitle, properties: {} };
     
-    // Update properties
-    Object.keys(properties).forEach(propId => {
-        const prop = properties[propId];
-        updates.properties[propId] = {
-            value: prop.value
-        };
+    formGroups.forEach((group) => {
+        const propertyId = group.getAttribute('data-property-id');
+        const propertyType = group.getAttribute('data-property-type');
+        const label = group.querySelector('label');
+        const propertyName = label ? label.textContent.replace(':', '').trim() : propertyId;
+        
+        if (propertyType === 'rich_text') {
+            const textarea = group.querySelector('textarea[data-rich-text="true"]');
+            if (textarea) {
+                console.log('Processing rich text field:', textarea.id);
+                const value = getRichTextContent(textarea.id);
+                console.log('Rich text content retrieved:', value);
+                updates.properties[propertyId] = {
+                    name: propertyName,
+                    type: 'rich_text',
+                    value: '',
+                    rich_text_content: value
+                };
+            }
+        } else {
+            const input = group.querySelector('input.form-control');
+            if (input) {
+                updates.properties[propertyId] = {
+                    name: propertyName,
+                    type: propertyType,
+                    value: input.value
+                };
+            }
+        }
     });
     
-    return fetch('/api/update_page', {
+    console.log('Updates being sent:', updates);
+    
+    fetch('/api/update_page', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -412,193 +529,128 @@ function updatePage(pageId, title, properties) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            location.reload();
+            console.log('Page updated successfully');
+            closeModal();
+            // Reload the current database data if we're in a database view
+            if (window.currentDatabaseId) {
+                loadDatabaseData(window.currentDatabaseId);
+            } else {
+                location.reload();
+            }
+        } else {
+            console.error('Update failed:', data);
+            alert('Failed to update page: ' + (data.error || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error updating page:', error);
+        alert('Error updating page');
     });
 }
 
-// deletePage function is implemented in page.html template
+// Initialize rich text editor for modal (called after modal content is set)
+function initRichTextEditorForModal() {
+    const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]:not(.rich-text-initialized)');
+    console.log('Initializing rich text editors for modal, found fields:', richTextFields.length);
+    
+    richTextFields.forEach(el => {
+        const placeholder = el.getAttribute('data-placeholder') || 'Enter text...';
+        console.log('Initializing rich text editor for:', el.id, 'with placeholder:', placeholder);
+        initRichTextEditor('#' + el.id, placeholder);
+        el.classList.add('rich-text-initialized');
+    });
+}
 
-// Calendar functions
-function renderCalendar(calendarItems, currentMonth, currentYear) {
-    const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    
-    document.getElementById('currentMonth').textContent = `${monthNames[currentMonth]} ${currentYear}`;
-    
-    const calendarDays = document.getElementById('calendarDays');
-    calendarDays.innerHTML = '';
-    
-    // Get first day of month and number of days
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    const startDate = new Date(firstDay);
-    startDate.setDate(startDate.getDate() - firstDay.getDay());
-    
-    // Generate calendar grid
-    for (let week = 0; week < 6; week++) {
-        for (let day = 0; day < 7; day++) {
-            const date = new Date(startDate);
-            date.setDate(startDate.getDate() + (week * 7) + day);
-            
-            const dayElement = document.createElement('div');
-            dayElement.className = 'calendar-day';
-            
-            // Check if it's current month
-            if (date.getMonth() === currentMonth) {
-                dayElement.classList.add('current-month');
-            }
-            
-            // Check if it's today
-            const today = new Date();
-            if (date.toDateString() === today.toDateString()) {
-                dayElement.classList.add('today');
-            }
-            
-            // Add day number
-            const dayNumber = document.createElement('div');
-            dayNumber.className = 'day-number';
-            dayNumber.textContent = date.getDate();
-            dayElement.appendChild(dayNumber);
-            
-            // Add events for this day
-            const eventsContainer = document.createElement('div');
-            eventsContainer.className = 'day-events';
-            
-            const dateString = formatDate(date);
-            const dayEvents = calendarItems.filter(item => {
-                try {
-                    const eventDate = new Date(item.date);
-                    // Check if the date is valid
-                    if (isNaN(eventDate.getTime())) {
-                        return false;
-                    }
-                    return eventDate.toDateString() === date.toDateString();
-                } catch (error) {
-                    console.warn('Invalid date in calendar item:', item.date);
-                    return false;
-                }
-            });
-            
-            dayEvents.forEach(event => {
-                const eventElement = document.createElement('div');
-                eventElement.className = 'calendar-event';
-                
-                // Check if page has description
-                const description = event.page.properties.description ? event.page.properties.description.value : '';
-                if (description) {
-                    eventElement.classList.add('has-description');
-                    eventElement.setAttribute('data-description', description);
-                }
-                
-                eventElement.textContent = event.page.title;
-                eventElement.onclick = () => showTaskDetails(event.page, dateString);
-                
-                if (event.is_repeating) {
-                    eventElement.classList.add('repeating');
-                }
-                
-                eventsContainer.appendChild(eventElement);
-            });
-            
-            dayElement.appendChild(eventsContainer);
-            calendarDays.appendChild(dayElement);
-        }
+// Generic rich text editor initialization function
+function initRichTextEditor(selector, placeholder = 'Enter text...') {
+    let element;
+    if (typeof selector === 'string') {
+        element = selector.startsWith('#') ? document.querySelector(selector) : document.getElementById(selector);
+    } else {
+        element = selector;
     }
-}
-
-function showTaskDetails(page, date) {
-    fetch(`/api/get_page_data/${page.id}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const pageData = data.page;
-                const completionLogs = data.completion_logs;
-                
-                // Check if task is completed for this date
-                const completionLog = completionLogs.find(log => log.date === date);
-                const isCompleted = completionLog ? completionLog.completed : false;
-                
-                // Build task details HTML
-                let detailsHtml = `
-                    <div class="task-details">
-                        <h3>${pageData.title}</h3>
-                `;
-                
-                // Add description if it exists
-                const description = pageData.properties.description ? pageData.properties.description.value : '';
-                if (description) {
-                    detailsHtml += `
-                        <div class="task-description">${description}</div>
-                    `;
-                }
-                
-                detailsHtml += `
-                        <div class="task-properties">
-                `;
-                
-                // Add properties (excluding description since we already showed it)
-                Object.values(pageData.properties).forEach(prop => {
-                    if (prop.value && prop.name !== 'Description') {
-                        detailsHtml += `
-                            <div class="task-property">
-                                <label>${prop.name}:</label>
-                                <span>${prop.value}</span>
-                            </div>
-                        `;
-                    }
-                });
-                
-                detailsHtml += `
-                        </div>
-                        <div class="task-actions">
-                            <label class="checkbox-container">
-                                <input type="checkbox" ${isCompleted ? 'checked' : ''} 
-                                       onchange="toggleTaskCompletion('${pageData.id}', '${date}', this.checked)">
-                                <span class="checkmark"></span>
-                                Mark as completed for ${date}
-                            </label>
-                        </div>
-                    </div>
-                `;
-                
-                // Show in sidebar
-                document.getElementById('taskSidebarTitle').textContent = pageData.title;
-                document.getElementById('taskSidebarContent').innerHTML = detailsHtml;
-                document.getElementById('taskSidebar').classList.add('active');
-            }
-        })
-        .catch(error => {
-            console.error('Error loading task details:', error);
-        });
-}
-
-function toggleTaskCompletion(pageId, date, completed) {
-    return fetch('/api/mark_completed', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            page_id: pageId,
-            date: date,
-            completed: completed
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Task completion updated');
+    
+    if (!element || element.classList.contains('rich-text-initialized')) {
+        return;
+    }
+    
+    console.log('Initializing rich text editor for element:', element.id);
+    
+    // Get initial content
+    const initialContent = element.value || '';
+    
+    // Create rich text editor container
+    const container = document.createElement('div');
+    container.className = 'rich-editor-container';
+    
+    // Create toolbar
+    const toolbar = document.createElement('div');
+    toolbar.className = 'rich-editor-toolbar';
+    toolbar.innerHTML = `
+        <button type="button" class="toolbar-btn" data-command="bold" title="Bold">
+            <i class="fas fa-bold"></i>
+        </button>
+        <button type="button" class="toolbar-btn" data-command="italic" title="Italic">
+            <i class="fas fa-italic"></i>
+        </button>
+        <button type="button" class="toolbar-btn" data-command="underline" title="Underline">
+            <i class="fas fa-underline"></i>
+        </button>
+        <div class="toolbar-separator"></div>
+        <button type="button" class="toolbar-btn" data-command="insertUnorderedList" title="Bullet List">
+            <i class="fas fa-list-ul"></i>
+        </button>
+        <button type="button" class="toolbar-btn" data-command="insertOrderedList" title="Numbered List">
+            <i class="fas fa-list-ol"></i>
+        </button>
+    `;
+    
+    // Create content area
+    const content = document.createElement('div');
+    content.className = 'rich-editor-content';
+    content.contentEditable = true;
+    content.innerHTML = initialContent || `<p>${placeholder}</p>`;
+    
+    // Add focus/blur handling for placeholder
+    content.addEventListener('focus', () => {
+        if (content.innerHTML === `<p>${placeholder}</p>`) {
+            content.innerHTML = '<p></p>';
         }
-    })
-    .catch(error => {
-        console.error('Error updating task completion:', error);
     });
+    
+    content.addEventListener('blur', () => {
+        if (content.innerHTML === '<p></p>' || content.innerHTML === '') {
+            content.innerHTML = `<p>${placeholder}</p>`;
+        }
+        // Update the original textarea
+        element.value = content.innerHTML;
+    });
+    
+    // Handle input changes
+    content.addEventListener('input', () => {
+        element.value = content.innerHTML;
+    });
+    
+    // Handle toolbar commands
+    toolbar.addEventListener('click', (e) => {
+        if (e.target.closest('.toolbar-btn')) {
+            e.preventDefault();
+            const command = e.target.closest('.toolbar-btn').dataset.command;
+            document.execCommand(command, false, null);
+            content.focus();
+        }
+    });
+    
+    // Assemble the editor
+    container.appendChild(toolbar);
+    container.appendChild(content);
+    
+    // Replace the textarea
+    element.style.display = 'none';
+    element.parentNode.insertBefore(container, element.nextSibling);
+    element.classList.add('rich-text-initialized');
+    
+    console.log('Rich text editor initialized successfully for:', element.id);
 }
 
 // Event listeners
@@ -609,12 +661,20 @@ document.addEventListener('DOMContentLoaded', function() {
             closeModal();
         }
     });
-    
     // Close modal with Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeModal();
             closeTaskSidebar();
+        }
+    });
+    // Correct auto-save initialization syntax
+    const inputs = document.querySelectorAll('input[type="text"], input[type="number"], textarea, select');
+    inputs.forEach(function(input) {
+        if (!input.classList.contains('ckeditor')) {
+            input.addEventListener('input', function() {
+                autoSaveFormInput(this);
+            });
         }
     });
 });
@@ -629,3 +689,32 @@ window.editPage = editPage;
 window.renderCalendar = renderCalendar;
 window.showTaskDetails = showTaskDetails;
 window.toggleTaskCompletion = toggleTaskCompletion;
+// Export viewPageDetails if defined
+if (typeof viewPageDetails === 'function') {
+    window.viewPageDetails = viewPageDetails;
+}
+
+// Fix getRichTextContent selector usage
+function getRichTextContent(selector) {
+    let element = null;
+    if (typeof selector === 'string') {
+        if (selector.startsWith('#')) {
+            element = document.querySelector(selector);
+        } else {
+            element = document.getElementById(selector);
+        }
+    } else if (selector instanceof HTMLElement) {
+        element = selector;
+    }
+    if (element) {
+        const container = element.parentNode.querySelector('.rich-editor-container');
+        if (container) {
+            const contentDiv = container.querySelector('.rich-editor-content');
+            if (contentDiv) {
+                return contentDiv.innerHTML;
+            }
+        }
+        return element.value || '';
+    }
+    return '';
+}

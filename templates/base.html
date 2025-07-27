@@ -224,12 +224,9 @@
         // Extract property index from selector
         const match = selector.match(/modalProp_(\d+)/);
         if (!match) return;
-        
         const propIndex = match[1];
         const databaseId = getCurrentDatabaseId();
-        
         if (!databaseId) return;
-        
         // Get the property definition
         fetch(`/api/get_database_data/${databaseId}`)
             .then(response => response.json())
@@ -238,15 +235,34 @@
                     const database = data.database;
                     const properties = Object.values(database.properties);
                     const property = properties[propIndex];
-                    
                     if (property) {
                         // Save the property value
-                        savePropertyValue(databaseId, property.id, content, 'rich_text');
+                        fetch('/api/update_property', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                page_id: window.currentPageId,
+                                property_id: property.id,
+                                value: content,
+                                type: 'rich_text'
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                showAutoSaveIndicator('Property saved');
+                            }
+                        })
+                        .catch(error => {
+                            showAutoSaveIndicator('Save failed', true);
+                        });
                     }
                 }
             })
             .catch(error => {
-                console.error('Error auto-saving property:', error);
+                showAutoSaveIndicator('Save failed', true);
             });
     }
 
@@ -258,16 +274,32 @@
     }
 
     function savePropertyValue(databaseId, propertyId, value, type) {
-        // Get the current page ID from the modal context
-        const modal = document.querySelector('.modal-overlay.active');
-        if (!modal) return;
-        
-        // For now, we'll save to a temporary storage
-        // In a real implementation, you'd need to track which page is being edited
-        console.log('Saving property:', propertyId, 'value:', value, 'type:', type);
-        
-        // Show auto-save indicator
-        showAutoSaveIndicator('Property saved');
+        // Save property value for rich_text
+        if (type === 'rich_text') {
+            fetch('/api/update_property', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    page_id: window.currentPageId,
+                    property_id: propertyId,
+                    value: value,
+                    type: 'rich_text'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAutoSaveIndicator('Property saved');
+                }
+            })
+            .catch(error => {
+                showAutoSaveIndicator('Save failed', true);
+            });
+        } else {
+            // ...existing code for other types...
+        }
     }
 
     function getCurrentDatabaseId() {
@@ -910,26 +942,17 @@
         }
 
         function getRichTextContent(selector) {
-            console.log('Getting rich text content for selector:', selector);
-            
-            // First try to find the original element
+            // Always return innerHTML for rich text editors
             let element = document.querySelector('#' + selector);
             if (element) {
-                console.log('Found original element:', element.id);
-                // Check if this element has a rich editor container
                 const container = element.parentNode.querySelector('.rich-editor-container');
                 if (container) {
                     const contentDiv = container.querySelector('.rich-editor-content');
                     if (contentDiv) {
-                        const content = contentDiv.innerHTML;
-                        console.log('Retrieved content from rich editor:', content);
-                        return content;
+                        return contentDiv.innerHTML;
                     }
                 }
-                // Fallback to element value
-                const value = element.value || '';
-                console.log('Retrieved content from element value:', value);
-                return value;
+                return element.value || '';
             }
             
             // If original element not found, try to find the rich editor container by stored reference
