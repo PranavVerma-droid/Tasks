@@ -53,10 +53,10 @@
                 <div class="description-toggle-header" onclick="toggleDescription('pageDescriptionContainer')">
                     <i class="fas fa-chevron-down toggle-icon"></i>
                     <span class="toggle-text">Description</span>
-                    <span class="toggle-indicator">{{ page.properties.description.rich_text_content|default('')|length > 0 and 'Has content' or 'Empty' }}</span>
+                    <span class="toggle-indicator">{{ (page.properties.description.rich_text_content | default('', true)) | length > 0 and 'Has content' or 'Empty' }}</span>
                 </div>
                 <div class="description-content expanded" id="pageDescriptionContainer_content">
-                    <div id="pageDescriptionEditable" class="rich-text-editor" contenteditable="true" onblur="saveInlineDescription()">{{ page.properties.description.rich_text_content|safe }}</div>
+                    <textarea id="pageDescriptionContainer_editor" data-rich-text="true" data-placeholder="Enter a detailed description...">{{ page.properties.description.rich_text_content|safe }}</textarea>
                 </div>
             </div>
         </div>
@@ -169,6 +169,19 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAllDatabases();
     loadPageDescription();
     ensureDescriptionProperty();
+    
+    // Initialize auto-save for form inputs
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add auto-save to all form inputs
+        const inputs = document.querySelectorAll('input[type="text"], input[type="number"], textarea, select');
+        inputs.forEach(input => {
+            if (!input.classList.contains('ckeditor')) {
+                input.addEventListener('input', function() {
+                    autoSaveFormInput(this);
+                });
+            }
+        });
+    });
 });
 
 function loadPageDescription() {
@@ -197,16 +210,11 @@ function loadPageDescription() {
             </div>
         </div>
     `;
-    
     container.innerHTML = descriptionHtml;
-    
-    // Initialize our custom rich text editor
     setTimeout(() => {
-        initRichTextEditor('pageDescriptionContainer_editor', 'Enter a detailed description...');
-        
-        // Set the content in the editor after initialization
+        initRichTextEditor('#pageDescriptionContainer_editor', 'Enter a detailed description...');
         if (content) {
-            setRichTextContent('pageDescriptionContainer_editor', content);
+            setRichTextContent('#pageDescriptionContainer_editor', content);
         }
     }, 100);
 }
@@ -704,7 +712,7 @@ function updatePageTitle(pageId, newTitle) {
 
 function savePage() {
     const newTitle = document.getElementById('pageTitle').textContent;
-    const descriptionContent = getRichTextContent('pageDescriptionContainer_editor');
+    const descriptionContent = getRichTextContent('#pageDescriptionContainer_editor');
     
     // Update page title
     updatePageTitle(currentPageId, newTitle);

@@ -218,8 +218,34 @@ function renderPropertyEditor(property, propertyDefinition) {
 
 // Property update functions
 function updateProperty(propertyId, type, value) {
-    // This would typically update the property via API
-    console.log('Updating property:', propertyId, type, value);
+    // Persist property update via API
+    if (!window.currentPageId) {
+        console.error('No currentPageId set');
+        return;
+    }
+    fetch('/api/update_property', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            page_id: window.currentPageId,
+            property_id: propertyId,
+            value: value,
+            type: type
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Property updated and persisted');
+        } else {
+            console.error('Error updating property:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error updating property:', error);
+    });
 }
 
 // Database table functions
@@ -598,4 +624,4 @@ window.updatePageTitle = updatePageTitle;
 window.editPage = editPage;
 window.renderCalendar = renderCalendar;
 window.showTaskDetails = showTaskDetails;
-window.toggleTaskCompletion = toggleTaskCompletion; 
+window.toggleTaskCompletion = toggleTaskCompletion;

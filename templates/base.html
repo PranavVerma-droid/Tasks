@@ -169,7 +169,7 @@
         
         // Set new timer (save after 2 seconds of no typing)
         autoSaveTimers[selector] = setTimeout(() => {
-            const content = getRichTextContent(selector);
+            const content = getRichTextContent('#' + selector);
             
             // Determine what type of content this is and save accordingly
             if (selector === 'pageDescriptionContainer_editor') {
@@ -888,11 +888,17 @@
 
         // Global functions for compatibility
         function initRichTextEditor(selector, placeholder = 'Enter description...') {
-            const element = document.querySelector(selector);
+            // Accept selector as either '#id' or 'id'
+            let element = null;
+            if (selector.startsWith('#')) {
+                element = document.querySelector(selector);
+            } else {
+                element = document.getElementById(selector);
+            }
             if (element) {
                 element.setAttribute('data-rich-text', 'true');
                 element.setAttribute('data-placeholder', placeholder);
-                new RichTextEditor(selector, {
+                new RichTextEditor('#' + element.id, {
                     placeholder: placeholder,
                     height: 200,
                     autoSave: true,
@@ -907,7 +913,7 @@
             console.log('Getting rich text content for selector:', selector);
             
             // First try to find the original element
-            let element = document.querySelector(selector);
+            let element = document.querySelector('#' + selector);
             if (element) {
                 console.log('Found original element:', element.id);
                 // Check if this element has a rich editor container
@@ -946,7 +952,7 @@
         }
 
         function setRichTextContent(selector, content) {
-            const element = document.querySelector(selector);
+            const element = document.querySelector('#' + selector);
             if (element) {
                 element.value = content;
                 // Update the rich editor if it exists
@@ -961,7 +967,7 @@
         }
 
         function destroyRichTextEditor(selector) {
-            const element = document.querySelector(selector);
+            const element = document.querySelector('#' + selector);
             if (element) {
                 const container = element.parentNode.querySelector('.rich-editor-container');
                 if (container) {
@@ -995,4 +1001,4 @@
         }
     </script>
 </body>
-</html> 
+</html>

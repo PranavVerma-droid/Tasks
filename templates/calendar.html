@@ -52,16 +52,46 @@ const calendarItems = {{ calendar_items | tojson }};
 const allDatabases = {{ data.databases | tojson }};
 let activeDatabaseIds = Object.keys(allDatabases);
 
+function buildDatabaseTree(databases) {
+    // Build a tree structure from flat databases
+    const dbMap = {};
+    Object.values(databases).forEach(db => {
+        dbMap[db.id] = { ...db, children: [] };
+    });
+    const roots = [];
+    Object.values(dbMap).forEach(db => {
+        if (db.parent_page_id) {
+            // Find parent page and its databases
+            const parentPage = Object.values(allDatabases).find(d => d.pages && d.pages.includes(db.parent_page_id));
+            // If parentPage exists, add as child
+            if (parentPage && dbMap[parentPage.id]) {
+                dbMap[parentPage.id].children.push(db);
+            } else {
+                roots.push(db);
+            }
+        } else {
+            roots.push(db);
+        }
+    });
+    return roots;
+}
+
 function renderDatabaseTree() {
     const tree = document.getElementById('calendarDatabaseTree');
     tree.innerHTML = '';
-    Object.values(allDatabases).forEach(db => {
+    const dbTree = buildDatabaseTree(allDatabases);
+    function renderNode(db, level = 0) {
         const checked = activeDatabaseIds.includes(db.id) ? 'checked' : '';
         const item = document.createElement('div');
         item.className = 'calendar-db-tree-item';
+        item.style.marginLeft = (level * 20) + 'px';
         item.innerHTML = `<label><input type="checkbox" value="${db.id}" ${checked} onchange="toggleDatabaseInCalendar('${db.id}', this.checked)"> ${db.name}</label>`;
         tree.appendChild(item);
-    });
+        if (db.children && db.children.length > 0) {
+            db.children.forEach(childDb => renderNode(childDb, level + 1));
+        }
+    }
+    dbTree.forEach(db => renderNode(db));
 }
 
 function toggleDatabaseInCalendar(dbId, checked) {

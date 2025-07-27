@@ -63,23 +63,27 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
-<script>
+<script type="text/javascript">
+// Assign page IDs from Jinja to a JS variable
+const allPageIds = {{ data.pages.keys() | list | tojson | safe }};
+
 function createNewPage() {
     // For now, redirect to the first page
-    // In a real implementation, this would create a new page
-    const pages = {{ data.pages.keys() | list | tojson }};
-    if (pages.length > 0) {
-        window.location.href = `/page/${pages[0]}`;
+    if (allPageIds.length > 0) {
+        window.location.href = `/page/${allPageIds[0]}`;
     }
 }
 
 function createDatabase() {
     // For now, redirect to the first page to create database there
-    const pages = {{ data.pages.keys() | list | tojson }};
-    if (pages.length > 0) {
-        window.location.href = `/page/${pages[0]}`;
+    if (allPageIds.length > 0) {
+        window.location.href = `/page/${allPageIds[0]}`;
     }
 }
+
+function addPageToDatabase(databaseId) {
+    alert('Add Page to Database is not implemented on the home page. Please use this feature inside a page or database.');
+}
 </script>
-{% endblock %} 
