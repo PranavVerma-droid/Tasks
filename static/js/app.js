@@ -239,6 +239,10 @@ function updateProperty(propertyId, type, value) {
     .then(data => {
         if (data.success) {
             console.log('Property updated and persisted');
+            // Reload database table if currentDatabaseId is set
+            if (window.currentDatabaseId) {
+                loadDatabaseData(window.currentDatabaseId);
+            }
         } else {
             console.error('Error updating property:', data.error);
         }
@@ -587,7 +591,7 @@ function toggleTaskCompletion(pageId, date, completed) {
         })
     })
     .then(response => response.json())
-    .then(data => {
+    .then data => {
         if (data.success) {
             console.log('Task completion updated');
         }
