@@ -1,3 +1,4 @@
 data/
 venv/
 TODO-1.md
+__pycache__/
