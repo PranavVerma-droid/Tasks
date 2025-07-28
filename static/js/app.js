@@ -264,6 +264,10 @@ function renderDatabaseTable(databaseId, pages, database) {
     const tableBody = document.getElementById(`databaseBody_${databaseId}`);
     if (!tableBody) return;
     
+    // Calculate the grid template columns based on number of properties
+    const propertyCount = Object.keys(database.properties).length;
+    const gridColumns = `300px 200px${' 1fr'.repeat(propertyCount)} 100px`;
+    
     // Check if any page has a non-empty description
     let hasDescription = false;
     pages.forEach(page => {
@@ -274,10 +278,20 @@ function renderDatabaseTable(databaseId, pages, database) {
     });
 
     tableBody.innerHTML = '';
+    
+    // Also update the table header to ensure it matches
+    const tableHeader = tableBody.parentNode.querySelector('.database-table-header');
+    if (tableHeader) {
+        tableHeader.style.gridTemplateColumns = gridColumns;
+    }
+    
     pages.forEach(page => {
         const row = document.createElement('div');
         row.className = 'database-table-row';
         row.setAttribute('data-page-id', page.id);
+        row.style.display = 'grid';
+        row.style.gridTemplateColumns = gridColumns;
+        
         // Title cell
         const titleCell = document.createElement('div');
         titleCell.className = 'table-cell table-cell-title';
@@ -290,23 +304,23 @@ function renderDatabaseTable(databaseId, pages, database) {
             </div>
         `;
         row.appendChild(titleCell);
+        
         // Description cell
-        if (hasDescription) {
-            const descCell = document.createElement('div');
-            descCell.className = 'table-cell';
-            const desc = page.properties.description;
-            if (desc && (desc.rich_text_content || desc.value)) {
-                const description = desc.rich_text_content || desc.value;
-                const isLongDescription = description.length > 50;
-                const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
-                const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
-                const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
-                descCell.innerHTML = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
-            } else {
-                descCell.innerHTML = '<span class="empty-property">-</span>';
-            }
-            row.appendChild(descCell);
+        const descCell = document.createElement('div');
+        descCell.className = 'table-cell';
+        const desc = page.properties.description;
+        if (desc && (desc.rich_text_content || desc.value)) {
+            const description = desc.rich_text_content || desc.value;
+            const isLongDescription = description.length > 50;
+            const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
+            const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
+            const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
+            descCell.innerHTML = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
+        } else {
+            descCell.innerHTML = '<span class="empty-property">-</span>';
         }
+        row.appendChild(descCell);
+        
         // Property cells
         Object.values(database.properties).forEach(prop => {
             const cell = document.createElement('div');
@@ -319,6 +333,7 @@ function renderDatabaseTable(databaseId, pages, database) {
             }
             row.appendChild(cell);
         });
+        
         // Actions cell
         const actionsCell = document.createElement('div');
         actionsCell.className = 'table-cell table-cell-actions';
@@ -337,6 +352,7 @@ function renderDatabaseTable(databaseId, pages, database) {
             </button>
         `;
         row.appendChild(actionsCell);
+        
         tableBody.appendChild(row);
     });
 }

@@ -218,7 +218,6 @@ function ensureDescriptionProperty() {
 // Load database data when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadAllDatabases();
-    loadPageDescription();
     ensureDescriptionProperty();
     
     // Initialize auto-save for form inputs
@@ -236,38 +235,32 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadPageDescription() {
-    const container = document.getElementById('pageDescriptionContainer');
-    if (!container) return;
-    
-    // Handle the content properly - it might be a string or already parsed
-    let content = '';
-    if (pageDescriptionData) {
-        if (typeof pageDescriptionData === 'string') {
-            content = pageDescriptionData;
-        } else {
-            content = pageDescriptionData.toString();
+    // Check if the description editor already exists in the DOM
+    const existingEditor = document.getElementById('pageDescriptionContainer_editor');
+    if (existingEditor && !existingEditor.classList.contains('rich-text-initialized')) {
+        // Handle the content properly - it might be a string or already parsed
+        let content = '';
+        if (pageDescriptionData) {
+            if (typeof pageDescriptionData === 'string') {
+                content = pageDescriptionData;
+            } else {
+                content = pageDescriptionData.toString();
+            }
         }
-    }
-    
-    const descriptionHtml = `
-        <div class="description-toggle-container">
-            <div class="description-toggle-header" onclick="toggleDescription('pageDescriptionContainer')">
-                <i class="fas fa-chevron-down toggle-icon"></i>
-                <span class="toggle-text">Description</span>
-                <span class="toggle-indicator">${content ? 'Has content' : 'Empty'}</span>
-            </div>
-            <div class="description-content" id="pageDescriptionContainer_content">
-                <textarea id="pageDescriptionContainer_editor" data-rich-text="true" data-placeholder="Enter a detailed description...">${content}</textarea>
-            </div>
-        </div>
-    `;
-    container.innerHTML = descriptionHtml;
-    setTimeout(() => {
-        initRichTextEditor('#pageDescriptionContainer_editor', 'Enter a detailed description...');
+        
+        // Set the textarea value if there's content
         if (content) {
-            setRichTextContent('#pageDescriptionContainer_editor', content);
+            existingEditor.value = content;
         }
-    }, 100);
+        
+        // Initialize rich text editor only once
+        setTimeout(() => {
+            initRichTextEditor('#pageDescriptionContainer_editor', 'Enter a detailed description...');
+            if (content) {
+                setRichTextContent('#pageDescriptionContainer_editor', content);
+            }
+        }, 100);
+    }
 }
 
 function toggleDescription(containerId) {
