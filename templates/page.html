@@ -145,19 +145,6 @@ function loadAllDatabases() {
     });
 }
 
-function loadDatabaseData(databaseId) {
-    fetch(`/api/get_database_data/${databaseId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                renderDatabaseTable(databaseId, data.pages, data.database);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading database data:', error);
-        });
-}
-
 function addDatabase() {
     const modalContent = `
         <div class="form-group">
@@ -190,29 +177,6 @@ function addDatabase() {
     showModal('Create Database', modalContent);
 }
 
-function addProperty() {
-    const list = document.getElementById('modalPropertiesList');
-    const item = document.createElement('div');
-    item.className = 'property-item';
-    item.innerHTML = `
-        <input type="text" class="form-control property-name" placeholder="Property name">
-        <select class="form-control property-type">
-            <option value="text">Text</option>
-            <option value="rich_text">Rich Text</option>
-            <option value="date">Date</option>
-            <option value="select">Select</option>
-            <option value="status">Status</option>
-            <option value="number">Number</option>
-        </select>
-        <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
-    `;
-    list.appendChild(item);
-}
-
-function removeProperty(button) {
-    button.parentElement.remove();
-}
-
 function confirmCreateDatabase() {
     const name = document.getElementById('modalDatabaseName').value.trim();
     if (!name) {
@@ -225,7 +189,7 @@ function confirmCreateDatabase() {
         const propName = item.querySelector('.property-name').value;
         const propType = item.querySelector('.property-type').value;
         if (propName) {
-            properties[`prop_${index}`] = { name: propName, type: propType, options: [] };
+            properties[`prop_${Date.now()}_${index}`] = { name: propName, type: propType, options: [] };
         }
     });
     
@@ -293,42 +257,13 @@ function showAddPageModal(databaseId, database) {
                 </div>
             </div>
             <div id="repetitionOptions" style="display:none; margin-bottom: 12px; border: 1px solid #444; padding: 10px; border-radius: 5px;">
-                <div class="form-group">
-                    <label>Start Date & Time</label>
-                     <div class="date-time-inputs">
-                        <input type="date" id="repetitionStartDate" class="form-control">
-                        <input type="time" id="repetitionStartTime" class="form-control">
-                        <span>to</span>
-                        <input type="time" id="repetitionEndTime" class="form-control">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>End Date (Optional)</label>
-                    <input type="date" id="repetitionEndDate" class="form-control">
-                </div>
-                <div class="form-group">
-                    <label>Frequency</label>
-                    <select id="repetitionType" class="form-control" onchange="updateRepetitionOptions()">
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                        <option value="custom">Custom</option>
-                    </select>
-                </div>
+                <div class="form-group"><label>Start Date & Time</label><div class="date-time-inputs"><input type="date" id="repetitionStartDate" class="form-control"><input type="time" id="repetitionStartTime" class="form-control"><span>to</span><input type="time" id="repetitionEndTime" class="form-control"></div></div>
+                <div class="form-group"><label>End Date (Optional)</label><input type="date" id="repetitionEndDate" class="form-control"></div>
+                <div class="form-group"><label>Frequency</label><select id="repetitionType" class="form-control" onchange="updateRepetitionOptions()"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="custom">Custom</option></select></div>
                 <div id="dailyOptions" style="display:none"><label>Every <input type="number" id="dailyInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> day(s)</label></div>
-                <div id="weeklyOptions" style="display:none">
-                    <label>Every <input type="number" id="weeklyInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> week(s) on:</label>
-                    <div id="weeklyDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">
-                        ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => `<label><input type="checkbox" value="${i}"> ${day}</label>`).join('')}
-                    </div>
-                </div>
+                <div id="weeklyOptions" style="display:none"><label>Every <input type="number" id="weeklyInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> week(s) on:</label><div id="weeklyDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => `<label><input type="checkbox" value="${i}"> ${day}</label>`).join('')}</div></div>
                 <div id="monthlyOptions" style="display:none"><label>Every <input type="number" id="monthlyInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> month(s) on day <input type="number" id="monthlyDay" value="1" min="1" max="31" class="form-control" style="width:70px; display:inline-block;"></label></div>
-                <div id="customOptions" style="display:none">
-                     <label>Every <input type="number" id="customInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> week(s) on:</label>
-                    <div id="customDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">
-                        ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => `<label><input type="checkbox" value="${i}"> ${day}</label>`).join('')}
-                    </div>
-                </div>
+                <div id="customOptions" style="display:none"><label>Every <input type="number" id="customInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> week(s) on:</label><div id="customDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => `<label><input type="checkbox" value="${i}"> ${day}</label>`).join('')}</div></div>
             </div>
         `;
     }
@@ -397,12 +332,7 @@ function confirmCreatePage(databaseId, datePropIndex) {
                     if (inputElement) {
                         let value = prop.type === 'rich_text' ? getRichTextContent(`modalProp_${index}`) : inputElement.value;
                         if (value) {
-                            properties[prop.id] = {
-                                name: prop.name,
-                                type: prop.type,
-                                value: prop.type === 'rich_text' ? '' : value,
-                                rich_text_content: prop.type === 'rich_text' ? value : null
-                            };
+                            properties[prop.id] = { name: prop.name, type: prop.type, value: prop.type === 'rich_text' ? '' : value, rich_text_content: prop.type === 'rich_text' ? value : null };
                         }
                     }
                 });
@@ -416,41 +346,19 @@ function confirmCreatePage(databaseId, datePropIndex) {
                     if (!repetitionChecked) {
                         const singleDate = document.getElementById('modalDate').value;
                         if (singleDate) {
-                            dateValue = {
-                                start_date: singleDate,
-                                end_date: singleDate,
-                                start_time: document.getElementById('modalStartTime').value || null,
-                                end_time: document.getElementById('modalEndTime').value || null,
-                                repetition: false
-                            };
+                            dateValue = { start_date: singleDate, end_date: singleDate, start_time: document.getElementById('modalStartTime').value || null, end_time: document.getElementById('modalEndTime').value || null, repetition: false };
                         }
                     } else {
                         const startDate = document.getElementById('repetitionStartDate').value;
-                        if (!startDate) {
-                            alert('Please select a start date for repetition.');
-                            return;
-                        }
+                        if (!startDate) { alert('Please select a start date for repetition.'); return; }
                         const repetitionType = document.getElementById('repetitionType').value;
-                        dateValue = {
-                            start_date: startDate,
-                            start_time: document.getElementById('repetitionStartTime').value || null,
-                            end_time: document.getElementById('repetitionEndTime').value || null,
-                            repetition: true,
-                            repetition_type: repetitionType,
-                            repetition_config: {
-                                end_date: document.getElementById('repetitionEndDate').value || null
-                            }
-                        };
-                        
+                        dateValue = { start_date: startDate, start_time: document.getElementById('repetitionStartTime').value || null, end_time: document.getElementById('repetitionEndTime').value || null, repetition: true, repetition_type: repetitionType, repetition_config: { end_date: document.getElementById('repetitionEndDate').value || null } };
                         if (repetitionType === 'daily') {
                             dateValue.repetition_config.interval = parseInt(document.getElementById('dailyInterval').value) || 1;
                         } else if (repetitionType === 'weekly' || repetitionType === 'custom') {
                             const interval = parseInt(document.getElementById(`${repetitionType}Interval`).value) || 1;
                             const daysChecked = Array.from(document.querySelectorAll(`#${repetitionType}DaysCheckboxes input:checked`)).map(cb => parseInt(cb.value));
-                            if (daysChecked.length === 0) {
-                                alert('Please select at least one day of the week.');
-                                return;
-                            }
+                            if (daysChecked.length === 0) { alert('Please select at least one day of the week.'); return; }
                             dateValue.repetition_config.interval = interval;
                             dateValue.repetition_config.days_of_week = daysChecked;
                         } else if (repetitionType === 'monthly') {

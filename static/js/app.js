@@ -61,6 +61,22 @@ function openPage(pageId) {
     window.location.href = `/page/${pageId}`;
 }
 
+function savePage() {
+    // Since we have auto-save, this can just be a manual trigger or confirmation
+    showAutoSaveIndicator('Page saved successfully');
+    
+    const titleEl = document.getElementById('pageTitle');
+    if (titleEl && typeof autoSavePageTitle === 'function') {
+        autoSavePageTitle(titleEl.textContent);
+    }
+
+    const editorEl = document.getElementById('pageDescriptionContainer_editor');
+    if (editorEl && typeof autoSavePageDescription === 'function') {
+         const content = getRichTextContent('#pageDescriptionContainer_editor');
+         autoSavePageDescription(content);
+    }
+}
+
 function deletePage(pageId) {
     if (confirm('Are you sure you want to delete this page?')) {
         fetch('/api/delete_page', {
@@ -104,7 +120,6 @@ function showPageEditModal(page, database) {
             const repEndTime = isRepeating ? value.end_time || '' : '';
             const repEndDate = isRepeating ? (value.repetition_config && value.repetition_config.end_date) || '' : '';
             const repType = isRepeating ? value.repetition_type : 'daily';
-            const config = isRepeating ? value.repetition_config || {} : {};
 
             propertiesHtml += `
                 <div class="form-group" data-property-id="${propId}" data-property-type="date">
@@ -119,23 +134,9 @@ function showPageEditModal(page, database) {
                     </div>
                     <div style="margin-top:8px;"><label><input type="checkbox" id="editRepetitionCheckbox_${idx}" onchange="toggleEditRepetitionOptions(${idx})" ${isRepeating ? 'checked' : ''}> Repetition</label></div>
                     <div id="editRepetitionOptions_${idx}" style="display:${isRepeating ? 'block' : 'none'}; border: 1px solid #444; padding: 10px; border-radius: 5px;">
-                        <div class="form-group">
-                            <label>Start Date & Time</label>
-                            <div class="date-time-inputs">
-                                <input type="date" id="editRepetitionStartDate_${idx}" class="form-control" value="${repStartDate}">
-                                <input type="time" id="editRepetitionStartTime_${idx}" class="form-control" value="${repStartTime}">
-                                <span>to</span>
-                                <input type="time" id="editRepetitionEndTime_${idx}" class="form-control" value="${repEndTime}">
-                            </div>
-                        </div>
+                        <div class="form-group"><label>Start Date & Time</label><div class="date-time-inputs"><input type="date" id="editRepetitionStartDate_${idx}" class="form-control" value="${repStartDate}"><input type="time" id="editRepetitionStartTime_${idx}" class="form-control" value="${repStartTime}"><span>to</span><input type="time" id="editRepetitionEndTime_${idx}" class="form-control" value="${repEndTime}"></div></div>
                         <div class="form-group"><label>End Date (Optional)</label><input type="date" id="editRepetitionEndDate_${idx}" class="form-control" value="${repEndDate}"></div>
-                        <div class="form-group"><label>Frequency</label><select id="editRepetitionType_${idx}" class="form-control" onchange="updateEditRepetitionOptions(${idx})">
-                            <option value="daily" ${repType === 'daily' ? 'selected' : ''}>Daily</option>
-                            <option value="weekly" ${repType === 'weekly' ? 'selected' : ''}>Weekly</option>
-                            <option value="monthly" ${repType === 'monthly' ? 'selected' : ''}>Monthly</option>
-                            <option value="custom" ${repType === 'custom' ? 'selected' : ''}>Custom</option>
-                        </select></div>
-                        <!-- Repetition options will be filled by JS -->
+                        <div class="form-group"><label>Frequency</label><select id="editRepetitionType_${idx}" class="form-control" onchange="updateEditRepetitionOptions(${idx})"><option value="daily" ${repType === 'daily' ? 'selected' : ''}>Daily</option><option value="weekly" ${repType === 'weekly' ? 'selected' : ''}>Weekly</option><option value="monthly" ${repType === 'monthly' ? 'selected' : ''}>Monthly</option><option value="custom" ${repType === 'custom' ? 'selected' : ''}>Custom</option></select></div>
                     </div>
                 </div>`;
         } else if (propDef.type === 'rich_text') {
@@ -231,21 +232,144 @@ function confirmEditPage(pageId, databaseId) {
     });
 }
 
+function editDatabase(databaseId) {
+    fetch(`/api/get_database_data/${databaseId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showEditDatabaseModal(data.database);
+            } else {
+                alert('Error fetching database data: ' + data.error);
+            }
+        });
+}
+
+function showEditDatabaseModal(database) {
+    let propertiesHtml = '';
+    Object.values(database.properties).forEach((prop, index) => {
+        propertiesHtml += `
+            <div class="property-item" data-property-id="${prop.id}">
+                <input type="text" class="form-control property-name" value="${prop.name}">
+                <select class="form-control property-type" disabled>
+                    <option value="text" ${prop.type === 'text' ? 'selected' : ''}>Text</option>
+                    <option value="rich_text" ${prop.type === 'rich_text' ? 'selected' : ''}>Rich Text</option>
+                    <option value="date" ${prop.type === 'date' ? 'selected' : ''}>Date</option>
+                    <option value="select" ${prop.type === 'select' ? 'selected' : ''}>Select</option>
+                    <option value="status" ${prop.type === 'status' ? 'selected' : ''}>Status</option>
+                    <option value="number" ${prop.type === 'number' ? 'selected' : ''}>Number</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
+            </div>
+        `;
+    });
+
+    const modalContent = `
+        <div class="form-group">
+            <label for="modalDatabaseName">Database Name</label>
+            <input type="text" id="modalDatabaseName" class="form-control" value="${database.name}">
+        </div>
+        <div class="form-group">
+            <label>Properties</label>
+            <div id="modalPropertiesList">
+                ${propertiesHtml}
+            </div>
+            <button type="button" class="btn btn-sm btn-secondary" onclick="addProperty()">Add Property</button>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="confirmEditDatabase('${database.id}')">Save Changes</button>
+            <button type="button" class="btn btn-danger" style="float: left;" onclick="deleteDatabase('${database.id}')">Delete Database</button>
+        </div>
+    `;
+    showModal('Edit Database', modalContent);
+}
+
+function confirmEditDatabase(databaseId) {
+    const name = document.getElementById('modalDatabaseName').value.trim();
+    if (!name) {
+        alert('Please enter a database name');
+        return;
+    }
+    
+    const properties = {};
+    document.querySelectorAll('#modalPropertiesList .property-item').forEach((item, index) => {
+        const propName = item.querySelector('.property-name').value;
+        const propType = item.querySelector('.property-type').value;
+        const propId = item.dataset.propertyId || `new_prop_${Date.now()}_${index}`;
+        if (propName) {
+            properties[propId] = { id: propId, name: propName, type: propType, options: [] };
+        }
+    });
+    
+    fetch('/api/update_database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ database_id: databaseId, name: name, properties: properties })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error updating database: ' + data.error);
+        }
+    });
+    closeModal();
+}
+
+function deleteDatabase(databaseId) {
+    if (confirm('Are you sure you want to delete this database and all its pages? This action cannot be undone.')) {
+        fetch('/api/delete_database', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ database_id: databaseId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = '/';
+            } else {
+                alert('Error deleting database: ' + data.error);
+            }
+        });
+    }
+}
+
+function addProperty() {
+    const list = document.getElementById('modalPropertiesList');
+    const item = document.createElement('div');
+    item.className = 'property-item';
+    item.innerHTML = `
+        <input type="text" class="form-control property-name" placeholder="Property name">
+        <select class="form-control property-type">
+            <option value="text">Text</option>
+            <option value="rich_text">Rich Text</option>
+            <option value="date">Date</option>
+            <option value="select">Select</option>
+            <option value="status">Status</option>
+            <option value="number">Number</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
+    `;
+    list.appendChild(item);
+}
+
+function removeProperty(button) {
+    button.parentElement.remove();
+}
+
 
 // Rich Text Editor initialization
 function initRichTextEditorForModal() {
     const richTextFields = document.querySelectorAll('.modal-overlay.active textarea[data-rich-text="true"]');
     richTextFields.forEach(el => {
         if (!el.classList.contains('rich-text-initialized')) {
-            // Replace with your actual rich text editor initialization if you have one
-            // This is a placeholder to avoid errors
             el.classList.add('rich-text-initialized');
         }
     });
 }
 
 function getRichTextContent(id) {
-    // Replace with your actual rich text editor content getter
     const el = document.getElementById(id);
     return el ? el.value : '';
 }
@@ -270,6 +394,11 @@ window.closeTaskSidebar = closeTaskSidebar;
 window.editPage = editPage;
 window.openPage = openPage;
 window.deletePage = deletePage;
+window.savePage = savePage;
+window.editDatabase = editDatabase;
+window.deleteDatabase = deleteDatabase;
+window.addProperty = addProperty;
+window.removeProperty = removeProperty;
 window.renderPropertyInput = (property, index) => {
     const inputId = `modalProp_${index}`;
     switch (property.type) {
