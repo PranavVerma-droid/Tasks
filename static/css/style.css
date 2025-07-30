@@ -774,12 +774,12 @@ body {
     align-items: center;
     padding: 20px;
     border-bottom: 1px solid #404040;
+    background: #2d2d2d;
 }
 
+.modal-header h3,
 .modal-header h3 {
-    font-size: 18px;
-    font-weight: 600;
-    color: #ffffff;
+    color: #fff !important;
 }
 
 .close-modal {
@@ -2119,4 +2119,9 @@ textarea.rich-text-initialized {
 #autoSaveIndicator.error {
     background: #ff4444;
     color: #ffffff;
+}
+
+.modal .form-group label,
+.modal-content .form-group label {
+    color: #fff !important;
 }
