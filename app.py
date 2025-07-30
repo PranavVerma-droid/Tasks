@@ -555,12 +555,10 @@ def calendar_view():
     all_completion_logs = {}
     for page in data.pages.values():
         date_prop = get_date_property(page)
-        # Collect completion logs for this page
         all_completion_logs[page.id] = [asdict(log) for log in data.completion_logs.get(page.id, [])]
         if date_prop and date_prop.value:
             try:
                 if isinstance(date_prop.value, dict) and date_prop.value.get('repetition'):
-                    # Handle repeating tasks
                     repetition_config = date_prop.value.get('repetition_config', {})
                     start_date = date_prop.value.get('start_date', '')
                     if start_date:
@@ -571,13 +569,12 @@ def calendar_view():
                         )
                         for date in dates:
                             calendar_items.append({
-                                'page': page,
+                                'page': asdict(page),
                                 'date': date,
                                 'is_repeating': True,
                                 'repetition_config': repetition_config
                             })
                 else:
-                    # Single date
                     if isinstance(date_prop.value, dict):
                         date_str = date_prop.value.get('start_date', '')
                     else:
@@ -589,7 +586,7 @@ def calendar_view():
                             else:
                                 datetime.strptime(date_str, '%Y-%m-%d')
                             calendar_items.append({
-                                'page': page,
+                                'page': asdict(page),
                                 'date': date_str,
                                 'is_repeating': False
                             })

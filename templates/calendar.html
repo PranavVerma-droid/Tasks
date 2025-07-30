@@ -182,18 +182,12 @@ function renderCalendar(calendarItems, currentMonth, currentYear) {
             
             const dateString = formatDate(date);
             const dayEvents = calendarItems.filter(item => {
-                try {
-                    const eventDate = new Date(item.date);
-                    // Check if the date is valid
-                    if (isNaN(eventDate.getTime())) {
-                        return false;
-                    }
-                    // Only show events from active databases
-                    if (item.page.parent_database_id && !activeDatabaseIds.includes(item.page.parent_database_id)) return false;
-                    return eventDate.toDateString() === date.toDateString();
-                } catch (error) {
-                    return false;
-                }
+                // Always use item.date as a string for comparison
+                const eventDateStr = typeof item.date === 'string' ? item.date : '';
+                if (!eventDateStr) return false;
+                // Only show events from active databases
+                if (item.page.parent_database_id && !activeDatabaseIds.includes(item.page.parent_database_id)) return false;
+                return eventDateStr === dateString;
             });
             
             dayEvents.forEach(event => {
@@ -208,7 +202,7 @@ function renderCalendar(calendarItems, currentMonth, currentYear) {
                 }
                 
                 eventElement.textContent = event.page.title;
-                eventElement.onclick = () => showTaskDetails(event.page, dateString);
+                eventElement.onclick = () => showTaskDetails(event.page, event.date); // Use event.date as string
                 
                 if (event.is_repeating) {
                     eventElement.classList.add('repeating');
@@ -220,7 +214,7 @@ function renderCalendar(calendarItems, currentMonth, currentYear) {
                 // Check if this event is completed for this date
                 let isCompleted = false;
                 if (window.completionLogs && window.completionLogs[event.page.id]) {
-                    const log = window.completionLogs[event.page.id].find(l => l.date === dateString && l.completed);
+                    const log = window.completionLogs[event.page.id].find(l => l.date === event.date && l.completed);
                     if (log) isCompleted = true;
                 }
                 if (isCompleted) {
@@ -301,10 +295,44 @@ function showTaskDetails(page, date) {
                         `;
                         Object.values(pageData.properties).forEach(prop => {
                             if ((prop.value || prop.rich_text_content) && prop.name !== 'Description') {
+                                let displayValue = '';
+                                if (prop.type === 'date') {
+                                    if (typeof prop.value === 'object' && prop.value !== null) {
+                                        if (prop.value.repetition) {
+                                            // Show repetition summary
+                                            let summary = '';
+                                            const rep = prop.value;
+                                            const type = rep.repetition_type || 'daily';
+                                            const config = rep.repetition_config || {};
+                                            if (type === 'daily') {
+                                                summary = `Every ${config.interval || 1} day(s)`;
+                                            } else if (type === 'weekly') {
+                                                const days = (config.days_of_week || []).map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ');
+                                                summary = `Every ${config.interval || 1} week(s) on ${days}`;
+                                            } else if (type === 'monthly') {
+                                                summary = `Every ${config.interval || 1} month(s) on day ${config.day_of_month || ''}`;
+                                            } else if (type === 'custom') {
+                                                const days = (config.days_of_week || []).map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ');
+                                                summary = `Custom: Every ${config.interval || 1} week(s) on ${days}`;
+                                            } else {
+                                                summary = 'Repeating';
+                                            }
+                                            if (rep.start_date) summary += `, from ${rep.start_date}`;
+                                            if (config.end_date) summary += ` to ${config.end_date}`;
+                                            displayValue = summary;
+                                        } else {
+                                            displayValue = prop.value.start_date || prop.value.end_date || '';
+                                        }
+                                    } else {
+                                        displayValue = prop.value || '';
+                                    }
+                                } else {
+                                    displayValue = prop.value || prop.rich_text_content || '';
+                                }
                                 detailsHtml += `
                                     <div class="task-property">
                                         <label>${prop.name}:</label>
-                                        <span>${prop.value || prop.rich_text_content}</span>
+                                        <span>${displayValue}</span>
                                     </div>
                                 `;
                             }
