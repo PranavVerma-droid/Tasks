@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
 import json
 import os
 import sqlite3
@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 import calendar
 from dataclasses import dataclass, asdict
 from copy import deepcopy
+import shutil
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
@@ -15,9 +16,11 @@ app.secret_key = 'your-secret-key-here'
 # Data directory
 DATA_DIR = './data'
 DATABASE_FILE = os.path.join(DATA_DIR, 'notion_data.db')
+NOTES_DIR = os.path.join(DATA_DIR, 'notes') # New directory for notes
 
-# Ensure data directory exists
+# Ensure data directories exist
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(NOTES_DIR, exist_ok=True) # Ensure notes directory exists
 
 # Data structure classes
 @dataclass
@@ -1068,7 +1071,7 @@ def update_property():
     
     data = load_data()
     if page_id not in data.pages:
-        return jsonify({'success': False, 'error': 'Page not found'})
+        return jsonify({'success': False, 'error': 'Page not found'}), 404
     
     page = data.pages[page_id]
     
@@ -1093,6 +1096,181 @@ def update_property():
     
     save_page(page)
     return jsonify({'success': True})
+
+# --- Notes Functionality (Updated) ---
+
+def _is_safe_path(path):
+    """
+    Checks if a given path is safe and stays within the NOTES_DIR.
+    This prevents directory traversal attacks.
+    """
+    # Normalize the path to resolve '..' components
+    abs_path = os.path.abspath(os.path.join(NOTES_DIR, path))
+    abs_notes_dir = os.path.abspath(NOTES_DIR)
+    # Check if the resolved path is a sub-path of the main notes directory
+    return os.path.commonpath([abs_path, abs_notes_dir]) == abs_notes_dir
+
+def list_notes_and_folders(base_path):
+    """
+    Lists notes (.md files) and subfolders recursively from a given base path.
+    Returns a list of dictionaries with 'name', 'path', 'type' ('file' or 'folder').
+    Paths are relative to NOTES_DIR.
+    """
+    items = []
+    try:
+        for entry in os.listdir(base_path):
+            full_path = os.path.join(base_path, entry)
+            relative_path = os.path.relpath(full_path, NOTES_DIR)
+            
+            if os.path.isdir(full_path):
+                items.append({
+                    'name': entry,
+                    'path': relative_path,
+                    'type': 'folder',
+                    'children': list_notes_and_folders(full_path) # Recursively list children
+                })
+            elif os.path.isfile(full_path) and entry.endswith('.md'):
+                items.append({
+                    'name': entry[:-3], # Remove .md extension for display
+                    'path': relative_path,
+                    'type': 'file',
+                    'updated_at': datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
+                })
+    except Exception as e:
+        print(f"Error listing notes and folders in {base_path}: {e}")
+    
+    # Sort folders first, then files, both alphabetically
+    items.sort(key=lambda x: (0 if x['type'] == 'folder' else 1, x['name'].lower()))
+    return items
+
+@app.route('/notes')
+def notes_view():
+    """Renders the notes page."""
+    data = load_data()
+    return render_template('notes.html', data=data)
+
+@app.route('/api/notes/list', methods=['GET'])
+def api_list_notes():
+    """API endpoint to list all notes and folders."""
+    notes_tree = list_notes_and_folders(NOTES_DIR)
+    return jsonify({'success': True, 'notes_tree': notes_tree})
+
+@app.route('/api/notes/get', methods=['GET'])
+def api_get_note():
+    """API endpoint to get the content of a specific note via a query parameter."""
+    note_path = request.args.get('path')
+    if not note_path:
+        return jsonify({'success': False, 'error': 'Note path is required'}), 400
+    
+    if not _is_safe_path(note_path):
+        return jsonify({'success': False, 'error': 'Invalid path provided'}), 400
+
+    full_path = os.path.join(NOTES_DIR, note_path)
+    if not os.path.isfile(full_path):
+        return jsonify({'success': False, 'error': 'Note not found'}), 404
+    
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({'success': True, 'content': content, 'path': note_path})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notes/create', methods=['POST'])
+def api_create_note_or_folder():
+    """API endpoint to create a new note or folder."""
+    data = request.json
+    item_type = data.get('type') # 'file' or 'folder'
+    name = data.get('name')
+    parent_path = data.get('parent_path', '') # Relative path to parent folder
+
+    if not name or not item_type:
+        return jsonify({'success': False, 'error': 'Name and type are required'}), 400
+
+    # Construct the final relative path for the new item
+    final_relative_path = os.path.join(parent_path, name)
+    if item_type == 'file':
+        final_relative_path += '.md'
+
+    if not _is_safe_path(final_relative_path):
+        return jsonify({'success': False, 'error': 'Invalid path provided'}), 400
+
+    full_path = os.path.join(NOTES_DIR, final_relative_path)
+    if os.path.exists(full_path):
+        return jsonify({'success': False, 'error': f'{item_type.capitalize()} with this name already exists'}), 409
+
+    try:
+        if item_type == 'file':
+            # Ensure parent directory exists before creating file
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, 'w', encoding='utf-8') as f:
+                f.write('') # Create empty file
+        elif item_type == 'folder':
+            os.makedirs(full_path)
+        else:
+            return jsonify({'success': False, 'error': 'Invalid item type'}), 400
+        
+        return jsonify({'success': True, 'path': os.path.relpath(full_path, NOTES_DIR)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notes/update', methods=['POST'])
+def api_update_note():
+    """API endpoint to update the content of an existing note."""
+    data = request.json
+    note_path = data.get('path')
+    content = data.get('content')
+    
+    if not note_path or content is None:
+        return jsonify({'success': False, 'error': 'Path and content are required'}), 400
+
+    if not _is_safe_path(note_path):
+        return jsonify({'success': False, 'error': 'Invalid path provided'}), 400
+
+    full_path = os.path.join(NOTES_DIR, note_path)
+    if not os.path.isfile(full_path):
+        return jsonify({'success': False, 'error': 'Note not found or is a directory'}), 404
+    
+    try:
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return jsonify({'success': True, 'path': note_path})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/notes/delete', methods=['POST'])
+def api_delete_note_or_folder():
+    """API endpoint to delete a note or an empty folder."""
+    data = request.json
+    item_path = data.get('path')
+    item_type = data.get('type') # 'file' or 'folder'
+
+    if not item_path or not item_type:
+        return jsonify({'success': False, 'error': 'Path and type are required'}), 400
+
+    if not _is_safe_path(item_path):
+        return jsonify({'success': False, 'error': 'Invalid path provided'}), 400
+
+    full_path = os.path.join(NOTES_DIR, item_path)
+    if not os.path.exists(full_path):
+        return jsonify({'success': False, 'error': 'Item not found'}), 404
+
+    try:
+        if item_type == 'file':
+            if not os.path.isfile(full_path):
+                return jsonify({'success': False, 'error': 'Path is a directory, not a file'}), 400
+            os.remove(full_path)
+        elif item_type == 'folder':
+            if not os.path.isdir(full_path):
+                return jsonify({'success': False, 'error': 'Path is a file, not a directory'}), 400
+            # Use shutil.rmtree to delete folders that may not be empty
+            shutil.rmtree(full_path)
+        else:
+            return jsonify({'success': False, 'error': 'Invalid item type'}), 400
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1185,10 +1185,33 @@ body {
     display: flex;
     gap: 2px;
     padding: 8px;
-    background: #f8f9fa;
-    border-bottom: 1px solid #ddd;
-    border-radius: 4px 4px 0 0;
+    background: #333; /* Darker background for toolbar */
+    border-bottom: 1px solid #444; /* Consistent border */
     flex-wrap: wrap;
+    border-top-left-radius: 6px; /* Match container border-radius */
+    border-top-right-radius: 6px; /* Match container border-radius */
+}
+
+.rich-editor-btn {
+    padding: 6px 10px;
+    background: #444; /* Slightly lighter than toolbar */
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rich-editor-btn:hover {
+    background: #555; /* Darker hover */
+}
+
+.rich-editor-btn.active {
+    background: #4a9eff; /* Blue active state */
 }
 
 .timed-event { 
@@ -1238,26 +1261,31 @@ body {
 }
 
 .rich-editor-content {
-    min-height: 100px;
-    max-height: 300px;
-    overflow-y: auto;
+    min-height: 200px;
     padding: 12px;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #333;
     outline: none;
+    color: #fff; /* White text */
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+    background: #2a2a2a; /* Dark background */
+    border-bottom-left-radius: 6px; /* Match container border-radius */
+    border-bottom-right-radius: 6px; /* Match container border-radius */
 }
 
 .rich-editor-content:focus {
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    background: #2a2a2a; /* Keep same background on focus */
+}
+
+.rich-editor-content h1,
+.rich-editor-content h2,
+.rich-editor-content h3 {
+    margin: 16px 0 8px 0;
+    font-weight: 600;
+    color: #ffffff; /* White headings */
 }
 
 .rich-editor-content p {
-    margin: 0 0 8px 0;
-}
-
-.rich-editor-content p:last-child {
-    margin-bottom: 0;
+    margin: 8px 0;
 }
 
 .rich-editor-content ul,
@@ -1266,20 +1294,34 @@ body {
     padding-left: 20px;
 }
 
-.rich-editor-content li {
-    margin: 4px 0;
+.rich-editor-content blockquote {
+    border-left: 4px solid #4a9eff; /* Blue border */
+    margin: 12px 0;
+    padding-left: 12px;
+    color: #ccc; /* Lighter grey for quotes */
 }
 
-.rich-editor-content strong {
-    font-weight: bold;
+.rich-editor-content code {
+    background: #333; /* Darker background for inline code */
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 13px;
+    color: #e0e0e0; /* Light text for code */
 }
 
-.rich-editor-content em {
-    font-style: italic;
+.rich-editor-content pre {
+    background: #1a1a1a; /* Even darker background for code blocks */
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 12px 0;
+    border: 1px solid #333; /* Border for code blocks */
 }
 
-.rich-editor-content u {
-    text-decoration: underline;
+.rich-editor-content pre code {
+    background: none;
+    padding: 0;
 }
 
 /* Dark theme support */
@@ -2142,9 +2184,8 @@ textarea.rich-text-initialized {
     }
 } 
 
-/* Rich Text Preview Styles */
 .rich-text-preview {
-    max-height: 60px;
+    max-height: 100px; /* Increased height for better preview */
     overflow: hidden;
     position: relative;
     line-height: 1.4;
@@ -2162,13 +2203,6 @@ textarea.rich-text-initialized {
     margin: 4px 0;
     font-weight: 600;
 }
-
-.rich-text-preview h1 { font-size: 16px; }
-.rich-text-preview h2 { font-size: 14px; }
-.rich-text-preview h3 { font-size: 13px; }
-.rich-text-preview h4 { font-size: 12px; }
-.rich-text-preview h5 { font-size: 11px; }
-.rich-text-preview h6 { font-size: 10px; }
 
 .rich-text-preview p {
     margin: 2px 0;
@@ -2222,7 +2256,235 @@ textarea.rich-text-initialized {
 .rich-text-preview pre code {
     background: none;
     padding: 0;
-} 
+}
+
+.notes-page-container {
+    display: flex;
+    height: calc(100vh - 120px); /* Adjust height to fit within the main content area */
+    gap: 16px;
+    padding: 16px; /* Added padding to the container */
+}
+
+/* Notes Sidebar (File Tree) */
+.notes-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    background-color: #2d2d2d;
+    border: 1px solid #404040;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.notes-sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid #404040;
+    background-color: #374151;
+}
+
+.notes-sidebar-header h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0;
+}
+
+.notes-tree {
+    flex-grow: 1;
+    padding: 12px;
+    overflow-y: auto;
+}
+
+.note-tree-item {
+    margin-bottom: 4px;
+}
+
+.note-tree-folder-header,
+.note-tree-file-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    position: relative; /* For actions positioning */
+}
+
+.note-tree-folder-header:hover,
+.note-tree-file-header:hover {
+    background-color: #374151;
+}
+
+.note-tree-folder-header span,
+.note-tree-file-header span {
+    flex-grow: 1;
+    color: #d1d5db;
+    font-size: 14px;
+}
+
+.note-tree-folder-header .folder-toggle-icon {
+    font-size: 10px;
+    color: #9ca3af;
+    transition: transform 0.2s ease;
+}
+
+.note-tree-folder-header .folder-icon,
+.note-tree-file-header .file-icon {
+    color: #3b82f6; /* Blue icon for folders/files */
+    font-size: 14px;
+}
+
+.note-tree-folder-children {
+    margin-left: 16px;
+    padding-left: 8px;
+    border-left: 1px solid #4b5563;
+    margin-top: 4px;
+}
+
+.note-item-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    position: absolute;
+    right: 8px;
+}
+
+.note-tree-folder-header:hover .note-item-actions,
+.note-tree-file-header:hover .note-item-actions {
+    opacity: 1;
+}
+
+.note-item-actions .btn {
+    padding: 4px 8px;
+    font-size: 10px;
+    border-radius: 4px;
+}
+
+/* Notes Main Content (Editor Area) */
+.notes-main {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #1a1a1a; /* Darker background for editor area */
+    border: 1px solid #333; /* Border for editor area */
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.note-editor-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.note-editor-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #333;
+    background-color: #2a2a2a; /* Slightly lighter than editor content */
+}
+
+.note-editor-header h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0;
+}
+
+.note-content-editor {
+    flex-grow: 1;
+    padding: 0; /* RichTextEditor handles its own padding */
+}
+
+.note-content-editor .rich-editor-container {
+    border: none; /* Remove outer border as notes-main has one */
+    border-radius: 0; /* Remove border radius */
+    height: 100% !important; /* Ensure it fills parent */
+}
+
+.note-content-editor .rich-editor-content {
+    min-height: calc(100% - 40px); /* Adjust based on toolbar height */
+    height: auto; /* Allow content to expand */
+    background-color: #1a1a1a; /* Match notes-main background */
+    border-radius: 0;
+}
+
+/* Empty state for notes main area */
+.notes-main .empty-state {
+    flex-grow: 1;
+    display: flex; /* Override default block display to use flex for centering */
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 48px 24px;
+    background-color: #1a1a1a;
+    border-radius: 8px;
+}
+
+.empty-state-small {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+    font-size: 14px;
+}
+
+.empty-state-small i {
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+/* Responsive adjustments for notes */
+@media (max-width: 768px) {
+    .notes-page-container {
+        flex-direction: column;
+        height: auto;
+        padding: 12px;
+    }
+
+    .notes-sidebar {
+        width: 100%;
+        max-height: 300px; /* Limit sidebar height on small screens */
+    }
+
+    .notes-main {
+        width: 100%;
+        margin-top: 16px;
+    }
+
+    .note-editor-header h2 {
+        font-size: 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .note-tree-folder-header,
+    .note-tree-file-header {
+        padding: 6px 8px;
+    }
+
+    .note-tree-folder-header span,
+    .note-tree-file-header span {
+        font-size: 13px;
+    }
+
+    .note-item-actions {
+        position: static; /* Allow actions to flow naturally */
+        opacity: 1;
+        margin-left: auto;
+    }
+
+    .note-item-actions .btn {
+        padding: 3px 6px;
+        font-size: 9px;
+    }
+
+    .note-editor-header h2 {
+        font-size: 18px;
+    }
+}
 
 #autoSaveIndicator {
     position: fixed;

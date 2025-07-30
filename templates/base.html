@@ -33,6 +33,10 @@
                         <i class="fas fa-calendar-alt"></i>
                         <span>Calendar</span>
                     </a>
+                    <a href="{{ url_for('notes_view') }}" class="sidebar-item">
+                        <i class="fas fa-clipboard"></i>
+                        <span>Notes</span>
+                    </a>
                 </div>
                 
                 <div class="sidebar-section">
@@ -191,6 +195,14 @@
             } else if (selector.startsWith('pageDescriptionContainer')) {
                  const editorContent = getRichTextContent('#pageDescriptionContainer_editor');
                  savePromise = autoSavePageDescription(editorContent);
+            } else if (selector.startsWith('noteEditor')) {
+                const editorContent = getRichTextContent('#noteEditor_editor');
+                const currentNotePath = document.getElementById('noteEditor_editor').dataset.currentNotePath;
+                if (currentNotePath) {
+                    savePromise = autoSaveNoteContent(currentNotePath, editorContent);
+                } else {
+                    savePromise = Promise.resolve(false); // No note selected to save
+                }
             }
             // Add other auto-save cases if needed
 
@@ -239,6 +251,20 @@
                         }
                     }
                 }
+            })
+        })
+        .then(response => response.json())
+        .then(data => data.success)
+        .catch(() => false);
+    }
+
+    function autoSaveNoteContent(notePath, content) {
+        return fetch('/api/notes/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                path: notePath,
+                content: content
             })
         })
         .then(response => response.json())
@@ -451,6 +477,7 @@
                     { name: 'ol', icon: 'fas fa-list-ol', title: 'Numbered List' },
                     { name: 'blockquote', icon: 'fas fa-quote-left', title: 'Quote' },
                     { name: 'code', icon: 'fas fa-code', title: 'Code' },
+                    { name: 'link', icon: 'fas fa-link', title: 'Insert Link' }, // Added Link Tool
                     { name: 'separator' },
                     { name: 'undo', icon: 'fas fa-undo', title: 'Undo' },
                     { name: 'redo', icon: 'fas fa-redo', title: 'Redo' },
@@ -500,6 +527,12 @@
                             code.textContent = range.toString();
                             range.deleteContents();
                             range.insertNode(code);
+                        }
+                        break;
+                    case 'link':
+                        const url = prompt('Enter the URL:');
+                        if (url) {
+                            document.execCommand('createLink', false, url);
                         }
                         break;
                     case 'undo': document.execCommand('undo', false, null); break;
@@ -595,6 +628,7 @@
             if (modal) {
                 const richTextElements = modal.querySelectorAll('textarea[data-rich-text="true"], .rich-text-editor');
                 richTextElements.forEach(element => {
+                    // Check if an editor is already initialized for this element
                     if (!element.parentNode.querySelector('.rich-editor-container')) {
                         new RichTextEditor(`#${element.id}`, {
                             placeholder: element.getAttribute('data-placeholder') || 'Enter description...',

@@ -6,6 +6,7 @@
 let currentModalCallback = null;
 window.currentPageId = null; // Set by page.html template
 window.currentDatabaseId = null; // Set dynamically
+let currentNotePath = null; // Global variable to track the currently open note
 
 // =================================================================================
 // MODAL DIALOG FUNCTIONS
@@ -147,9 +148,6 @@ function renderDatabaseTable(databaseId, pages, database) {
 function openPage(pageId) {
     window.location.href = `/page/${pageId}`;
 }
-
-// savePage function is removed as it's no longer used by any button
-// and auto-saving is handled in base.html
 
 function deletePage(pageId) {
     if (confirm('Are you sure you want to delete this page?')) {
@@ -739,6 +737,203 @@ function updateRepetitionOptions() {
 }
 
 // =================================================================================
+// NOTES ACTIONS (Updated)
+// =================================================================================
+
+function listNotesAndFolders() {
+    fetch('/api/notes/list')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderNoteTree(data.notes_tree, document.getElementById('noteTree'));
+            } else {
+                console.error('Error listing notes:', data.error);
+            }
+        })
+        .catch(error => console.error('Error fetching note list:', error));
+}
+
+function renderNoteTree(items, parentElement, currentPath = '') {
+    parentElement.innerHTML = '';
+    items.forEach(item => {
+        const itemEl = document.createElement('div');
+        itemEl.className = `note-tree-item note-tree-item-${item.type}`;
+        itemEl.dataset.path = item.path;
+
+        if (item.type === 'folder') {
+            itemEl.innerHTML = `
+                <div class="note-tree-folder-header">
+                    <i class="fas fa-chevron-right folder-toggle-icon"></i>
+                    <i class="fas fa-folder folder-icon"></i>
+                    <span>${item.name}</span>
+                    <div class="note-item-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); showCreateModal('${item.path}', 'file')"><i class="fas fa-plus"></i> Note</button>
+                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); showCreateModal('${item.path}', 'folder')"><i class="fas fa-folder-plus"></i> Folder</button>
+                        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteNoteOrFolder('${item.path}', 'folder')"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+                <div class="note-tree-folder-children" style="display: none;"></div>
+            `;
+            const folderHeader = itemEl.querySelector('.note-tree-folder-header');
+            folderHeader.addEventListener('click', (e) => {
+                const childrenContainer = itemEl.querySelector('.note-tree-folder-children');
+                const toggleIcon = itemEl.querySelector('.folder-toggle-icon');
+                if (childrenContainer.style.display === 'none') {
+                    childrenContainer.style.display = 'block';
+                    toggleIcon.classList.replace('fa-chevron-right', 'fa-chevron-down');
+                } else {
+                    childrenContainer.style.display = 'none';
+                    toggleIcon.classList.replace('fa-chevron-down', 'fa-chevron-right');
+                }
+            });
+            renderNoteTree(item.children, itemEl.querySelector('.note-tree-folder-children'), item.path);
+        } else { // file
+            itemEl.innerHTML = `
+                <div class="note-tree-file-header" onclick="openNote('${item.path}')">
+                    <i class="fas fa-file-alt file-icon"></i>
+                    <span>${item.name}</span>
+                    <div class="note-item-actions">
+                        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteNoteOrFolder('${item.path}', 'file')"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `;
+        }
+        parentElement.appendChild(itemEl);
+    });
+}
+
+function openNote(notePath) {
+    currentNotePath = notePath;
+    document.getElementById('noteEditor').style.display = 'block';
+    document.getElementById('notesEmptyState').style.display = 'none';
+    document.getElementById('noteEditorTitle').textContent = notePath.split('/').pop().replace('.md', '');
+    
+    const editorEl = document.getElementById('noteEditor_editor');
+    if (editorEl) {
+        editorEl.dataset.currentNotePath = notePath; // Store path for auto-save
+    }
+
+    fetch(`/api/notes/get?path=${encodeURIComponent(notePath)}`)
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => { throw new Error(err.error || `HTTP error! Status: ${response.status}`); })
+                                 .catch(() => { throw new Error(`HTTP error! Status: ${response.status}`); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                let content = data.content || '';
+                const isHtml = /<([a-z][\s\S]*?)>/i.test(content);
+                let htmlContent = isHtml ? content : markdownToHtml(content);
+
+                // The RichTextEditor wrapper now correctly prevents duplicate instances.
+                const editorInstance = new RichTextEditor('#noteEditor_editor', {
+                    placeholder: 'Start writing your note...',
+                    height: 'calc(100vh - 200px)',
+                    autoSave: true,
+                });
+                
+                if (editorInstance) {
+                    editorInstance.setContent(htmlContent);
+                }
+            } else {
+                throw new Error(data.error || 'Failed to load note content.');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading note:', error);
+            alert(`Could not load note: ${error.message}`);
+            document.getElementById('noteEditor').style.display = 'none';
+            document.getElementById('notesEmptyState').style.display = 'flex';
+        });
+}
+
+function markdownToHtml(md) {
+    if (!md) return '';
+    let html = md;
+    html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = html.replace(/\n/g, '<br>');
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
+    return html;
+}
+
+function showCreateModal(parentPath, type) {
+    const title = type === 'file' ? 'Create New Note' : 'Create New Folder';
+    const label = type === 'file' ? 'Note Name' : 'Folder Name';
+    const placeholder = type === 'file' ? 'My New Note' : 'My New Folder';
+
+    const modalContent = `
+        <div class="form-group">
+            <label for="itemName">${label}</label>
+            <input type="text" id="itemName" class="form-control" placeholder="${placeholder}">
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="confirmCreateNoteOrFolder('${parentPath}', '${type}')">Create</button>
+        </div>
+    `;
+    showModal(title, modalContent);
+}
+
+function confirmCreateNoteOrFolder(parentPath, type) {
+    const name = document.getElementById('itemName').value.trim();
+    if (!name) {
+        alert(`${type === 'file' ? 'Note' : 'Folder'} name cannot be empty.`);
+        return;
+    }
+
+    fetch('/api/notes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, type: type, parent_path: parentPath })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeModal();
+            listNotesAndFolders(); // Refresh tree
+            if (type === 'file') {
+                openNote(data.path); // Open the newly created note
+            }
+        } else {
+            alert('Error creating ' + type + ': ' + data.error);
+        }
+    });
+}
+
+function deleteNoteOrFolder(itemPath, type) {
+    const confirmMessage = `Are you sure you want to delete this ${type} (${itemPath})? This action cannot be undone.`;
+    if (confirm(confirmMessage)) {
+        fetch('/api/notes/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: itemPath, type: type })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                listNotesAndFolders(); // Refresh tree
+                if (currentNotePath === itemPath) {
+                    document.getElementById('noteEditor').style.display = 'none';
+                    document.getElementById('notesEmptyState').style.display = 'flex';
+                    currentNotePath = null;
+                }
+            } else {
+                alert('Error deleting ' + type + ': ' + data.error);
+            }
+        });
+    }
+}
+
+
+// =================================================================================
 // INITIALIZATION & EVENT LISTENERS
 // =================================================================================
 document.addEventListener('DOMContentLoaded', function() {
@@ -760,8 +955,51 @@ document.addEventListener('DOMContentLoaded', function() {
     // Page-specific initializations
     if (document.querySelector('.page-container')) { // We are on page.html
         loadAllDatabases();
+    } else if (document.querySelector('.notes-page-container')) { // We are on notes.html
+        listNotesAndFolders();
+        document.getElementById('notesEmptyState').style.display = 'flex';
+        document.getElementById('noteEditor').style.display = 'none';
     }
 });
+
+// =================================================================================
+// RICH TEXT EDITOR SINGLETON WRAPPER (THE FIX)
+// =================================================================================
+// Store RichTextEditor instances globally to prevent re-initialization on the same element.
+window.richTextEditors = window.richTextEditors || [];
+if (window.RichTextEditor) {
+    const originalRichTextEditor = window.RichTextEditor;
+    // We are overwriting the global RichTextEditor constructor with our own logic.
+    window.RichTextEditor = function(...args) {
+        const selector = args[0];
+        const element = document.querySelector(selector);
+
+        // If the target element doesn't exist, we can't create an editor.
+        if (!element) {
+            console.error(`RichTextEditor target element "${selector}" not found.`);
+            return null;
+        }
+
+        // Check if an editor instance for this specific element already exists in our cache.
+        let existingEditor = window.richTextEditors.find(editor => editor.element === element);
+        
+        if (existingEditor) {
+            // If it exists, return the stored instance instead of creating a new one.
+            // This is the key to preventing duplicate toolbars.
+            return existingEditor.instance;
+        }
+
+        // If no instance exists for this element, create a new one using the original constructor.
+        const newInstance = new originalRichTextEditor(...args);
+        
+        // Store the element and the new instance together in our cache for future checks.
+        window.richTextEditors.push({ element: element, instance: newInstance });
+        
+        // Return the newly created instance.
+        return newInstance;
+    };
+}
+
 
 // =================================================================================
 // EXPORT FUNCTIONS TO WINDOW OBJECT
@@ -813,3 +1051,9 @@ window.markTaskCompleted = (pageId, date, completed) => {
         }
     });
 };
+
+// Notes specific functions
+window.openNote = openNote;
+window.showCreateModal = showCreateModal;
+window.confirmCreateNoteOrFolder = confirmCreateNoteOrFolder;
+window.deleteNoteOrFolder = deleteNoteOrFolder;

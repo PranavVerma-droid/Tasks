@@ -36,13 +36,13 @@
             <h3>Calendar View</h3>
             <p>View all your tasks in a calendar layout</p>
         </div>
-        
-        <div class="action-card" onclick="createDatabase()">
+
+        <div class="action-card" onclick="location.href='{{ url_for('notes_view') }}'">
             <div class="action-icon">
-                <i class="fas fa-database"></i>
+                <i class="fas fa-clipboard"></i>
             </div>
-            <h3>New Database</h3>
-            <p>Create an inline database with custom properties</p>
+            <h3>Notes View</h3>
+            <p>Manage your personal notes and ideas</p>
         </div>
     </div>
     

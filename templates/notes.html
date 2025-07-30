@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Notes - Notion Alternative{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('index') }}">Home</a>
+<span class="breadcrumb-separator">/</span>
+<span>Notes</span>
+{% endblock %}
+
+{% block top_bar_actions %}
+<button class="btn btn-primary" onclick="showCreateModal('', 'file')">
+    <i class="fas fa-plus"></i>
+    New Note
+</button>
+<button class="btn btn-secondary" onclick="showCreateModal('', 'folder')">
+    <i class="fas fa-folder-plus"></i>
+    New Folder
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="notes-page-container">
+    <div class="notes-sidebar">
+        <div class="notes-sidebar-header">
+            <h4>Notes & Folders</h4>
+        </div>
+        <div class="notes-tree" id="noteTree">
+            <!-- Notes tree will be loaded here by JS -->
+            <div class="empty-state-small">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading notes...</p>
+            </div>
+        </div>
+    </div>
+    <div class="notes-main">
+        <div id="noteEditor" class="note-editor-container" style="display: none;">
+            <div class="note-editor-header">
+                <h2 id="noteEditorTitle"></h2>
+            </div>
+            <div class="note-content-editor">
+                <textarea id="noteEditor_editor" data-rich-text="true" data-placeholder="Start writing your note..."></textarea>
+            </div>
+        </div>
+        <div id="notesEmptyState" class="empty-state">
+            <div class="empty-state-icon">
+                <i class="fas fa-clipboard"></i>
+            </div>
+            <h3>Select a note or create a new one</h3>
+            <p>Your notes will appear here. Organize them into folders for easy access.</p>
+            <button class="btn btn-primary" onclick="showCreateModal('', 'file')">
+                <i class="fas fa-plus"></i>
+                Create New Note
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initial load of notes tree is handled by app.js
+        // The empty state is shown by default and hidden when a note is opened.
+        const notesEmptyState = document.getElementById('notesEmptyState');
+        const noteEditor = document.getElementById('noteEditor');
+
+        // Initially hide editor and show empty state
+        noteEditor.style.display = 'none';
+        notesEmptyState.style.display = 'flex'; // Use flex for centering
+    });
+
+    // Override openNote to also manage the empty state visibility
+    const originalOpenNote = window.openNote;
+    window.openNote = function(notePath) {
+        originalOpenNote(notePath); // Call the original function
+        document.getElementById('notesEmptyState').style.display = 'none';
+        document.getElementById('noteEditor').style.display = 'block';
+    };
+
+    // Override deleteNoteOrFolder to also manage the empty state visibility
+    const originalDeleteNoteOrFolder = window.deleteNoteOrFolder;
+    window.deleteNoteOrFolder = function(itemPath, type) {
+        originalDeleteNoteOrFolder(itemPath, type).then(() => {
+            // After deletion, if no note is open, show empty state
+            if (!window.currentNotePath) {
+                document.getElementById('notesEmptyState').style.display = 'flex';
+                document.getElementById('noteEditor').style.display = 'none';
+            }
+        });
+    };
+</script>
+{% endblock %}
