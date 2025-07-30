@@ -1676,6 +1676,34 @@ textarea.rich-text-initialized {
     border: 1px solid #404040;
 }
 
+#savingIndicator {
+    position: fixed;
+    top: 80px;
+    right: 24px;
+    background-color: #374151;
+    color: #d1d5db;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 10001; /* Above autoSaveIndicator */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    pointer-events: none;
+}
+
+#savingIndicator i {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
 
 /* Responsive hierarchy */
 @media (max-width: 768px) {
@@ -2196,14 +2224,13 @@ textarea.rich-text-initialized {
     padding: 0;
 } 
 
-/* Auto-save Indicator */
 #autoSaveIndicator {
     position: fixed;
-    top: 20px;
-    right: 20px;
+    top: 80px; /* Adjusted to not overlap with saving indicator */
+    right: 24px;
     padding: 8px 16px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     z-index: 10000;
     transition: all 0.3s ease;
@@ -2218,12 +2245,12 @@ textarea.rich-text-initialized {
 }
 
 #autoSaveIndicator.success {
-    background: #4a9eff;
+    background: #22c55e; /* Green for success */
     color: #ffffff;
 }
 
 #autoSaveIndicator.error {
-    background: #ff4444;
+    background: #ef4444; /* Red for error */
     color: #ffffff;
 }
 

@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+    <div id="savingIndicator" class="saving-indicator">
+        <i class="fas fa-cloud-upload-alt"></i> Saving...
+    </div>
     <div class="app-container">
         <!-- Sidebar -->
         <div class="sidebar">
@@ -121,6 +124,8 @@
             </div>
         </div>
     </div>
+    
+    <div id="autoSaveIndicator"></div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     {% block extra_js %}{% endblock %}
@@ -155,46 +160,75 @@
                 }
             }
         });
+
+        // Add auto-save listener for page title
+        const pageTitleEl = document.getElementById('pageTitle');
+        if (pageTitleEl) {
+            pageTitleEl.addEventListener('input', () => {
+                autoSaveContent('pageTitle', pageTitleEl.textContent);
+            });
+        }
     });
 
-    // Remove old CKEditor and auto-save code - replaced with custom RichTextEditor
     // Auto-save functionality with debouncing
     const autoSaveTimers = {};
     
-    function autoSaveContent(selector) {
+    function autoSaveContent(selector, content) {
         // Clear existing timer
         if (autoSaveTimers[selector]) {
             clearTimeout(autoSaveTimers[selector]);
         }
         
-        // Set new timer (save after 2 seconds of no typing)
+        // Show saving indicator
+        showSavingIndicator(true);
+
+        // Set new timer (save after 1.5 seconds of no typing)
         autoSaveTimers[selector] = setTimeout(() => {
-            const content = getRichTextContent('#' + selector);
-            
+            let savePromise;
             // Determine what type of content this is and save accordingly
-            if (selector === 'pageDescriptionContainer_editor') {
-                // This is a page description
-                autoSavePageDescription(content);
-            } else if (selector.startsWith('modalProp_')) {
-                // This is a database property
-                autoSaveDatabaseProperty(selector, content);
-            } else if (selector === 'modalPageDescription') {
-                // This is a modal page description
-                autoSaveModalDescription(content);
+            if (selector === 'pageTitle') {
+                savePromise = autoSavePageTitle(content);
+            } else if (selector.startsWith('pageDescriptionContainer')) {
+                 const editorContent = getRichTextContent('#pageDescriptionContainer_editor');
+                 savePromise = autoSavePageDescription(editorContent);
             }
-        }, 2000); // 2 second delay
+            // Add other auto-save cases if needed
+
+            if (savePromise) {
+                savePromise.then(success => {
+                    showSavingIndicator(false); // Hide saving indicator
+                    showAutoSaveIndicator(success ? 'Saved' : 'Save failed', !success);
+                });
+            } else {
+                showSavingIndicator(false); // Hide if no promise
+            }
+        }, 1500); // 1.5 second delay
+    }
+
+    function autoSavePageTitle(title) {
+        if (!window.currentPageId) return Promise.resolve(false);
+        
+        return fetch('/api/update_page', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                page_id: window.currentPageId,
+                updates: { title: title }
+            })
+        })
+        .then(response => response.json())
+        .then(data => data.success)
+        .catch(() => false);
     }
 
     function autoSavePageDescription(content) {
-        if (!currentPageId) return;
+        if (!window.currentPageId) return Promise.resolve(false);
         
-        fetch('/api/update_page', {
+        return fetch('/api/update_page', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                page_id: currentPageId,
+                page_id: window.currentPageId,
                 updates: {
                     properties: {
                         description: {
@@ -208,112 +242,15 @@
             })
         })
         .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                console.log('Page description auto-saved');
-                showAutoSaveIndicator('Page description saved');
-            }
-        })
-        .catch(error => {
-            console.error('Error auto-saving page description:', error);
-            showAutoSaveIndicator('Save failed', true);
-        });
+        .then(data => data.success)
+        .catch(() => false);
     }
 
-    function autoSaveDatabaseProperty(selector, content) {
-        // Extract property index from selector
-        const match = selector.match(/modalProp_(\d+)/);
-        if (!match) return;
-        const propIndex = match[1];
-        const databaseId = getCurrentDatabaseId();
-        if (!databaseId) return;
-        // Get the property definition
-        fetch(`/api/get_database_data/${databaseId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const database = data.database;
-                    const properties = Object.values(database.properties);
-                    const property = properties[propIndex];
-                    if (property) {
-                        // Save the property value
-                        fetch('/api/update_property', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                page_id: window.currentPageId,
-                                property_id: property.id,
-                                value: content,
-                                type: 'rich_text'
-                            })
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                showAutoSaveIndicator('Property saved');
-                            }
-                        })
-                        .catch(error => {
-                            showAutoSaveIndicator('Save failed', true);
-                        });
-                    }
-                }
-            })
-            .catch(error => {
-                showAutoSaveIndicator('Save failed', true);
-            });
-    }
-
-    function autoSaveModalDescription(content) {
-        // This would be called when editing a page description in a modal
-        // For now, we'll just log it
-        console.log('Modal description auto-saved:', content);
-        showAutoSaveIndicator('Description saved');
-    }
-
-    function savePropertyValue(databaseId, propertyId, value, type) {
-        // Save property value for rich_text
-        if (type === 'rich_text') {
-            fetch('/api/update_property', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    page_id: window.currentPageId,
-                    property_id: propertyId,
-                    value: value,
-                    type: 'rich_text'
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAutoSaveIndicator('Property saved');
-                }
-            })
-            .catch(error => {
-                showAutoSaveIndicator('Save failed', true);
-            });
-        } else {
-            // ...existing code for other types...
+    function showSavingIndicator(show) {
+        const indicator = document.getElementById('savingIndicator');
+        if (indicator) {
+            indicator.style.opacity = show ? '1' : '0';
         }
-    }
-
-    function getCurrentDatabaseId() {
-        // Try to get the current database ID from the global variable
-        if (window.currentDatabaseId) {
-            return window.currentDatabaseId;
-        }
-        
-        // Fallback: try to get from page context
-        const databaseContainer = document.querySelector('.database-container');
-        if (databaseContainer) {
-            return databaseContainer.dataset.databaseId;
-        }
-        return null;
     }
 
     function showAutoSaveIndicator(message, isError = false) {
@@ -335,97 +272,6 @@
         }, 3000);
     }
 
-    // Initialize auto-save for form inputs
-    document.addEventListener('DOMContentLoaded', function() {
-        // Add auto-save to all form inputs
-        const inputs = document.querySelectorAll('input[type="text"], input[type="number"], textarea, select');
-        inputs.forEach(input => {
-            if (!input.classList.contains('ckeditor')) {
-                input.addEventListener('input', function() {
-                    autoSaveFormInput(this);
-                });
-            }
-        });
-    });
-
-    function autoSaveFormInput(input) {
-        const inputId = input.id;
-        const inputValue = input.value;
-        const inputType = input.type || 'text';
-        
-        // Clear existing timer
-        if (autoSaveTimers[inputId]) {
-            clearTimeout(autoSaveTimers[inputId]);
-        }
-        
-        // Set new timer (save after 2 seconds of no typing)
-        autoSaveTimers[inputId] = setTimeout(() => {
-            // Determine what type of input this is and save accordingly
-            if (inputId === 'pageTitle') {
-                autoSavePageTitle(inputValue);
-            } else if (inputId.startsWith('modalProp_')) {
-                autoSaveModalProperty(inputId, inputValue, inputType);
-            }
-        }, 2000); // 2 second delay
-    }
-
-    function autoSavePageTitle(title) {
-        if (!window.currentPageId) return;
-        
-        fetch('/api/update_page', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                page_id: window.currentPageId,
-                updates: {
-                    title: title
-                }
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                console.log('Page title auto-saved');
-                showAutoSaveIndicator('Page title saved');
-            }
-        })
-        .catch(error => {
-            console.error('Error auto-saving page title:', error);
-            showAutoSaveIndicator('Save failed', true);
-        });
-    }
-
-    function autoSaveModalProperty(inputId, value, type) {
-        // Extract property index from input ID
-        const match = inputId.match(/modalProp_(\d+)/);
-        if (!match) return;
-        
-        const propIndex = match[1];
-        const databaseId = getCurrentDatabaseId();
-        
-        if (!databaseId) return;
-        
-        // Get the property definition
-        fetch(`/api/get_database_data/${databaseId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const database = data.database;
-                    const properties = Object.values(database.properties);
-                    const property = properties[propIndex];
-                    
-                    if (property) {
-                        // Save the property value
-                        savePropertyValue(databaseId, property.id, value, type);
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Error auto-saving property:', error);
-            });
-    }
     </script>
     <!-- Custom Rich Text Editor -->
     <style>
@@ -547,11 +393,8 @@
                     placeholder: options.placeholder || 'Enter description...',
                     height: options.height || 200,
                     autoSave: options.autoSave !== false,
-                    autoSaveDelay: options.autoSaveDelay || 2000,
-                    onChange: options.onChange || null
                 };
                 
-                this.autoSaveTimer = null;
                 this.init();
             }
             
@@ -611,8 +454,6 @@
                     { name: 'separator' },
                     { name: 'undo', icon: 'fas fa-undo', title: 'Undo' },
                     { name: 'redo', icon: 'fas fa-redo', title: 'Redo' },
-                    { name: 'separator' },
-                    { name: 'save', icon: 'fas fa-save', title: 'Save Now' }
                 ];
                 
                 tools.forEach(tool => {
@@ -630,11 +471,7 @@
                         btn.innerHTML = `<i class="${tool.icon}"></i>`;
                         btn.onclick = (e) => {
                             e.preventDefault();
-                            if (tool.name === 'save') {
-                                this.manualSave();
-                            } else {
-                                this.execCommand(tool.name);
-                            }
+                            this.execCommand(tool.name);
                         };
                         this.toolbar.appendChild(btn);
                     }
@@ -645,36 +482,16 @@
                 this.content.focus();
                 
                 switch (command) {
-                    case 'bold':
-                        document.execCommand('bold', false, null);
-                        break;
-                    case 'italic':
-                        document.execCommand('italic', false, null);
-                        break;
-                    case 'underline':
-                        document.execCommand('underline', false, null);
-                        break;
-                    case 'strikethrough':
-                        document.execCommand('strikeThrough', false, null);
-                        break;
-                    case 'h1':
-                        document.execCommand('formatBlock', false, 'h1');
-                        break;
-                    case 'h2':
-                        document.execCommand('formatBlock', false, 'h2');
-                        break;
-                    case 'h3':
-                        document.execCommand('formatBlock', false, 'h3');
-                        break;
-                    case 'ul':
-                        document.execCommand('insertUnorderedList', false, null);
-                        break;
-                    case 'ol':
-                        document.execCommand('insertOrderedList', false, null);
-                        break;
-                    case 'blockquote':
-                        document.execCommand('formatBlock', false, 'blockquote');
-                        break;
+                    case 'bold': document.execCommand('bold', false, null); break;
+                    case 'italic': document.execCommand('italic', false, null); break;
+                    case 'underline': document.execCommand('underline', false, null); break;
+                    case 'strikethrough': document.execCommand('strikeThrough', false, null); break;
+                    case 'h1': document.execCommand('formatBlock', false, 'h1'); break;
+                    case 'h2': document.execCommand('formatBlock', false, 'h2'); break;
+                    case 'h3': document.execCommand('formatBlock', false, 'h3'); break;
+                    case 'ul': document.execCommand('insertUnorderedList', false, null); break;
+                    case 'ol': document.execCommand('insertOrderedList', false, null); break;
+                    case 'blockquote': document.execCommand('formatBlock', false, 'blockquote'); break;
                     case 'code':
                         const selection = window.getSelection();
                         if (selection.rangeCount > 0) {
@@ -685,12 +502,8 @@
                             range.insertNode(code);
                         }
                         break;
-                    case 'undo':
-                        document.execCommand('undo', false, null);
-                        break;
-                    case 'redo':
-                        document.execCommand('redo', false, null);
-                        break;
+                    case 'undo': document.execCommand('undo', false, null); break;
+                    case 'redo': document.execCommand('redo', false, null); break;
                 }
                 
                 this.updateToolbar();
@@ -699,20 +512,11 @@
             
             updateToolbar() {
                 const buttons = this.toolbar.querySelectorAll('.rich-editor-btn');
-                buttons.forEach(btn => {
-                    btn.classList.remove('active');
-                });
+                buttons.forEach(btn => btn.classList.remove('active'));
                 
-                // Update active states based on current selection
-                if (document.queryCommandState('bold')) {
-                    this.toolbar.querySelector('[title="Bold"]').classList.add('active');
-                }
-                if (document.queryCommandState('italic')) {
-                    this.toolbar.querySelector('[title="Italic"]').classList.add('active');
-                }
-                if (document.queryCommandState('underline')) {
-                    this.toolbar.querySelector('[title="Underline"]').classList.add('active');
-                }
+                if (document.queryCommandState('bold')) this.toolbar.querySelector('[title="Bold"]').classList.add('active');
+                if (document.queryCommandState('italic')) this.toolbar.querySelector('[title="Italic"]').classList.add('active');
+                if (document.queryCommandState('underline')) this.toolbar.querySelector('[title="Underline"]').classList.add('active');
             }
             
             addEventListeners() {
@@ -721,168 +525,26 @@
                     this.autoSave();
                 });
                 
-                this.content.addEventListener('keyup', () => {
-                    this.updateToolbar();
-                });
-                
-                this.content.addEventListener('click', () => {
-                    this.updateToolbar();
-                });
-                
-                this.content.addEventListener('focus', () => {
-                    this.container.style.borderColor = '#4a9eff';
-                });
-                
+                this.content.addEventListener('keyup', () => this.updateToolbar());
+                this.content.addEventListener('click', () => this.updateToolbar());
+                this.content.addEventListener('focus', () => this.container.style.borderColor = '#4a9eff');
                 this.content.addEventListener('blur', () => {
                     this.container.style.borderColor = '#444';
-                    // Also save on blur
                     this.autoSave();
                 });
-                
-                // Add paste event
-                this.content.addEventListener('paste', () => {
-                    setTimeout(() => {
-                        this.triggerChange();
-                        this.autoSave();
-                    }, 100);
-                });
+                this.content.addEventListener('paste', () => setTimeout(() => {
+                    this.triggerChange();
+                    this.autoSave();
+                }, 100));
             }
             
             triggerChange() {
-                if (this.options.onChange) {
-                    this.options.onChange(this.getContent());
-                }
+                // This is a hook for potential future use
             }
             
             autoSave() {
                 if (!this.options.autoSave) return;
-                
-                if (this.autoSaveTimer) {
-                    clearTimeout(this.autoSaveTimer);
-                }
-                
-                this.autoSaveTimer = setTimeout(() => {
-                    const content = this.getContent();
-                    this.saveContent(content);
-                }, this.options.autoSaveDelay);
-            }
-            
-            saveContent(content) {
-                // Update hidden input
-                this.element.value = content;
-                
-                // Determine what type of content this is and save accordingly
-                const selector = this.selector;
-                
-                if (selector === '#pageDescriptionContainer_editor') {
-                    this.autoSavePageDescription(content);
-                } else if (selector.startsWith('#modalProp_')) {
-                    this.autoSaveDatabaseProperty(selector, content);
-                } else if (selector === '#modalPageDescription') {
-                    this.autoSaveModalDescription(content);
-                }
-            }
-            
-            autoSavePageDescription(content) {
-                if (!window.currentPageId) return;
-                
-                fetch('/api/update_page', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        page_id: window.currentPageId,
-                        updates: {
-                            properties: {
-                                description: {
-                                    name: 'Description',
-                                    type: 'rich_text',
-                                    value: '',
-                                    rich_text_content: content
-                                }
-                            }
-                        }
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        this.showAutoSaveIndicator('Page description saved');
-                    } else {
-                        this.showAutoSaveIndicator('Save failed', true);
-                    }
-                })
-                .catch(error => {
-                    this.showAutoSaveIndicator('Save failed', true);
-                });
-            }
-            
-            autoSaveDatabaseProperty(selector, content) {
-                const match = selector.match(/modalProp_(\d+)/);
-                if (!match) return;
-                
-                const propIndex = match[1];
-                const databaseId = this.getCurrentDatabaseId();
-                
-                if (!databaseId) return;
-                
-                fetch(`/api/get_database_data/${databaseId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            const database = data.database;
-                            const properties = Object.values(database.properties);
-                            const property = properties[propIndex];
-                            
-                            if (property) {
-                                this.savePropertyValue(databaseId, property.id, content, 'rich_text');
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        // Handle error silently
-                    });
-            }
-            
-            autoSaveModalDescription(content) {
-                this.showAutoSaveIndicator('Description saved');
-            }
-            
-            savePropertyValue(databaseId, propertyId, value, type) {
-                const modal = document.querySelector('.modal-overlay.active');
-                if (!modal) return;
-                
-                this.showAutoSaveIndicator('Property saved');
-            }
-            
-            getCurrentDatabaseId() {
-                if (window.currentDatabaseId) {
-                    return window.currentDatabaseId;
-                }
-                
-                const databaseContainer = document.querySelector('.database-container');
-                if (databaseContainer) {
-                    return databaseContainer.dataset.databaseId;
-                }
-                return null;
-            }
-            
-            showAutoSaveIndicator(message, isError = false) {
-                let indicator = document.getElementById('autoSaveIndicator');
-                if (!indicator) {
-                    indicator = document.createElement('div');
-                    indicator.id = 'autoSaveIndicator';
-                    document.body.appendChild(indicator);
-                }
-                
-                indicator.textContent = message;
-                indicator.className = isError ? 'error' : 'success';
-                indicator.classList.add('show');
-                
-                setTimeout(() => {
-                    indicator.classList.remove('show');
-                }, 3000);
+                autoSaveContent(this.element.id, this.getContent());
             }
             
             getContent() {
@@ -904,126 +566,41 @@
 
         // Initialize rich text editors
         document.addEventListener('DOMContentLoaded', function() {
-            
-            // Initialize any existing rich text editors
             const richTextElements = document.querySelectorAll('textarea[data-rich-text="true"], .rich-text-editor');
-            
             richTextElements.forEach(element => {
                 new RichTextEditor(`#${element.id}`, {
                     placeholder: element.getAttribute('data-placeholder') || 'Enter description...',
                     height: parseInt(element.getAttribute('data-height')) || 200,
                     autoSave: true,
-                    autoSaveDelay: 2000
                 });
             });
         });
 
         // Global functions for compatibility
-        function initRichTextEditor(selector, placeholder = 'Enter description...') {
-            // Accept selector as either '#id' or 'id'
-            let element = null;
-            if (selector.startsWith('#')) {
-                element = document.querySelector(selector);
-            } else {
-                element = document.getElementById(selector);
-            }
-            if (element) {
-                element.setAttribute('data-rich-text', 'true');
-                element.setAttribute('data-placeholder', placeholder);
-                new RichTextEditor('#' + element.id, {
-                    placeholder: placeholder,
-                    height: 200,
-                    autoSave: true,
-                    autoSaveDelay: 2000
-                });
-            } else {
-                console.error('Element not found for selector:', selector);
-            }
-        }
-
         function getRichTextContent(selector) {
-            // Always return innerHTML for rich text editors
-            let element = document.querySelector('#' + selector);
+            const element = document.querySelector(selector);
             if (element) {
                 const container = element.parentNode.querySelector('.rich-editor-container');
                 if (container) {
                     const contentDiv = container.querySelector('.rich-editor-content');
-                    if (contentDiv) {
-                        return contentDiv.innerHTML;
-                    }
+                    if (contentDiv) return contentDiv.innerHTML;
                 }
                 return element.value || '';
             }
-            
-            // If original element not found, try to find the rich editor container by stored reference
-            console.log('Original element not found, searching for rich editor container...');
-            const containers = document.querySelectorAll('.rich-editor-container');
-            for (let container of containers) {
-                const originalElementId = container.dataset.originalElementId;
-                if (originalElementId === selector.replace('#', '')) {
-                    const contentDiv = container.querySelector('.rich-editor-content');
-                    if (contentDiv) {
-                        const content = contentDiv.innerHTML;
-                        console.log('Retrieved content from rich editor container:', content);
-                        return content;
-                    }
-                }
-            }
-            
-            console.log('Element not found for selector:', selector);
             return '';
-        }
-
-        function setRichTextContent(selector, content) {
-            // Ensure selector starts with a single '#'
-            let element = null;
-            if (selector.startsWith('#')) {
-                element = document.querySelector(selector);
-            } else {
-                element = document.getElementById(selector);
-            }
-            if (element) {
-                element.value = content;
-                // Update the rich editor if it exists
-                const container = element.parentNode.querySelector('.rich-editor-container');
-                if (container) {
-                    const contentDiv = container.querySelector('.rich-editor-content');
-                    if (contentDiv) {
-                        contentDiv.innerHTML = content;
-                    }
-                }
-            }
-        }
-
-        function destroyRichTextEditor(selector) {
-            const element = document.querySelector('#' + selector);
-            if (element) {
-                const container = element.parentNode.querySelector('.rich-editor-container');
-                if (container) {
-                    container.remove();
-                    element.style.display = '';
-                }
-            }
         }
 
         function initRichTextEditorForModal() {
             const modal = document.querySelector('.modal-overlay.active');
             if (modal) {
                 const richTextElements = modal.querySelectorAll('textarea[data-rich-text="true"], .rich-text-editor');
-                console.log('Found rich text elements in modal:', richTextElements.length);
-                
                 richTextElements.forEach(element => {
-                    console.log('Processing element:', element.id);
                     if (!element.parentNode.querySelector('.rich-editor-container')) {
-                        console.log('Initializing rich text editor for:', element.id);
                         new RichTextEditor(`#${element.id}`, {
                             placeholder: element.getAttribute('data-placeholder') || 'Enter description...',
                             height: 200,
                             autoSave: false, // Disable auto-save for modal editors
-                            autoSaveDelay: 2000
                         });
-                    } else {
-                        console.log('Rich editor already exists for:', element.id);
                     }
                 });
             }

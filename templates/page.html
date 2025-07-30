@@ -24,10 +24,6 @@
     <i class="fas fa-database"></i>
     Add Database
 </button>
-<button class="btn btn-primary" onclick="savePage()">
-    <i class="fas fa-save"></i>
-    Save
-</button>
 {% endblock %}
 
 {% block content %}
@@ -37,9 +33,6 @@
             <h1 class="page-title" id="pageTitle" contenteditable="true">{{ page.title }}</h1>
         </div>
         <div class="page-actions">
-            <button class="btn btn-primary" onclick="savePage()">
-                <i class="fas fa-save"></i> Save Page
-            </button>
             <button class="btn btn-secondary" onclick="window.history.back()">
                 <i class="fas fa-arrow-left"></i> Back
             </button>

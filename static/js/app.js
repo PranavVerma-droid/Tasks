@@ -44,46 +44,6 @@ function closeTaskSidebar() {
 }
 
 // =================================================================================
-// UTILITY FUNCTIONS
-// =================================================================================
-function getRichTextContent(id) {
-    // This function needs to be robust to handle the custom rich text editor from base.html
-    const element = document.getElementById(id);
-    if (!element) return '';
-
-    // Check if a rich text editor instance is attached
-    const editorContainer = element.closest('.rich-editor-container') || element.parentNode.querySelector('.rich-editor-container');
-    if (editorContainer) {
-        const contentDiv = editorContainer.querySelector('.rich-editor-content');
-        if (contentDiv) return contentDiv.innerHTML;
-    }
-    
-    // Fallback to the original textarea's value if editor not found or initialized
-    return element.value;
-}
-
-
-function initRichTextEditorForModal() {
-    const modal = document.querySelector('.modal-overlay.active');
-    if (modal) {
-        const richTextElements = modal.querySelectorAll('textarea[data-rich-text="true"]');
-        richTextElements.forEach(element => {
-            // Check if already initialized to prevent errors
-            if (!element.parentNode.querySelector('.rich-editor-container')) {
-                 // The RichTextEditor class is defined in base.html, so it should be available globally
-                if (typeof RichTextEditor === 'function') {
-                    new RichTextEditor(`#${element.id}`, {
-                        placeholder: element.getAttribute('data-placeholder') || 'Enter description...',
-                        height: 200,
-                        autoSave: false, // Disable auto-save for modal editors for simplicity
-                    });
-                }
-            }
-        });
-    }
-}
-
-// =================================================================================
 // PAGE & DATABASE LOADING/RENDERING
 // =================================================================================
 
@@ -188,35 +148,8 @@ function openPage(pageId) {
     window.location.href = `/page/${pageId}`;
 }
 
-function savePage() {
-    const title = document.getElementById('pageTitle').textContent;
-    const description = getRichTextContent('pageDescriptionContainer_editor');
-
-    fetch('/api/update_page', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            page_id: window.currentPageId,
-            updates: {
-                title: title,
-                properties: {
-                    description: {
-                        name: 'Description',
-                        type: 'rich_text',
-                        value: '',
-                        rich_text_content: description
-                    }
-                }
-            }
-        })
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            if (typeof showAutoSaveIndicator === 'function') {
-                showAutoSaveIndicator('Page saved successfully');
-            }
-        }
-    });
-}
+// savePage function is removed as it's no longer used by any button
+// and auto-saving is handled in base.html
 
 function deletePage(pageId) {
     if (confirm('Are you sure you want to delete this page?')) {
@@ -318,7 +251,7 @@ function showPageEditModal(page, database) {
 
 function confirmEditPage(pageId, databaseId) {
     const title = document.getElementById('editPageTitle').value;
-    const description = getRichTextContent('editPageDescription');
+    const description = getRichTextContent('#editPageDescription');
     const updates = { 
         title: title, 
         properties: {
@@ -337,9 +270,9 @@ function confirmEditPage(pageId, databaseId) {
         const propNameEl = propEl.querySelector('label');
         if (!propNameEl) return;
         const propName = propNameEl.textContent;
-        const inputEl = propEl.querySelector('[id^=editProp_], [id^=editRepetitionCheckbox_]');
-        if (!inputEl) return;
-        const uniqueId = inputEl.id.replace(/editProp_|editRepetitionCheckbox_/, '');
+        const uniqueIdMatch = (propEl.innerHTML.match(/id="[^"]*?(_[^"]+)"/) || [])[1];
+        if (!uniqueIdMatch) return;
+        const uniqueId = uniqueIdMatch.substring(1);
 
         if (propType === 'date') {
             const isRepeating = document.getElementById(`editRepetitionCheckbox_${uniqueId}`).checked;
@@ -368,7 +301,7 @@ function confirmEditPage(pageId, databaseId) {
             }
             updates.properties[propId] = { name: propName, type: 'date', value: value };
         } else if (propType === 'rich_text') {
-            updates.properties[propId] = { name: propName, type: 'rich_text', value: '', rich_text_content: getRichTextContent(`editProp_${uniqueId}`) };
+            updates.properties[propId] = { name: propName, type: 'rich_text', value: '', rich_text_content: getRichTextContent(`#editProp_${uniqueId}`) };
         } else {
             updates.properties[propId] = { name: propName, type: propType, value: document.getElementById(`editProp_${uniqueId}`).value };
         }
@@ -710,7 +643,7 @@ function confirmCreatePage(databaseId, datePropIndex) {
                     if (index === datePropIndex) return;
                     const inputElement = document.getElementById(`modalProp_${index}`);
                     if (inputElement) {
-                        let value = prop.type === 'rich_text' ? getRichTextContent(`modalProp_${index}`) : inputElement.value;
+                        let value = prop.type === 'rich_text' ? getRichTextContent(`#modalProp_${index}`) : inputElement.value;
                         if (value) {
                             properties[prop.id] = { name: prop.name, type: prop.type, value: prop.type === 'rich_text' ? '' : value, rich_text_content: prop.type === 'rich_text' ? value : null };
                         }
@@ -751,7 +684,7 @@ function confirmCreatePage(databaseId, datePropIndex) {
                     }
                 }
 
-                const descriptionContent = getRichTextContent('modalPageDescription');
+                const descriptionContent = getRichTextContent('#modalPageDescription');
                 if (descriptionContent && descriptionContent.trim()) {
                     properties['description'] = { name: 'Description', type: 'rich_text', value: '', rich_text_content: descriptionContent };
                 }
@@ -841,7 +774,6 @@ window.closeTaskSidebar = closeTaskSidebar;
 
 // Page & Database CRUD
 window.openPage = openPage;
-window.savePage = savePage;
 window.deletePage = deletePage;
 window.editPage = editPage;
 window.confirmEditPage = confirmEditPage;
