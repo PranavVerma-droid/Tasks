@@ -115,15 +115,15 @@ function renderDatabaseTable(databaseId, pages, database) {
 
     // Dynamically build the header to match the columns
     const headerRow = tableBody.previousElementSibling; // The .database-table-header
+    const gridTemplateColumns = `minmax(250px, 2fr) 200px repeat(${Object.keys(database.properties).length}, minmax(150px, 1fr)) 120px`;
+
     if(headerRow) {
-        let headerHTML = `<div class="table-cell table-cell-title">Title</div>`;
+        let headerHTML = `<div class="table-cell table-cell-title">Title</div><div class="table-cell">Description</div>`;
         Object.values(database.properties).forEach(propDef => {
             headerHTML += `<div class="table-cell">${propDef.name}</div>`;
         });
         headerHTML += `<div class="table-cell table-cell-actions">Actions</div>`;
         headerRow.innerHTML = headerHTML;
-        // Adjust grid columns based on number of properties
-        const gridTemplateColumns = `minmax(250px, 2fr) repeat(${Object.keys(database.properties).length}, minmax(150px, 1fr)) 120px`;
         headerRow.style.gridTemplateColumns = gridTemplateColumns;
     }
 
@@ -132,8 +132,20 @@ function renderDatabaseTable(databaseId, pages, database) {
         const row = document.createElement('div');
         row.className = 'database-table-row';
         row.setAttribute('data-page-id', page.id);
+        row.style.gridTemplateColumns = gridTemplateColumns; // Match header columns
 
-        let rowHTML = `<div class="table-cell table-cell-title" onclick="openPage('${page.id}')" style="cursor: pointer;">${page.title}</div>`;
+        // Get description
+        const descriptionProp = page.properties.description;
+        let descriptionText = '-';
+        if (descriptionProp && descriptionProp.rich_text_content) {
+            const plainText = descriptionProp.rich_text_content.replace(/<[^>]*>/g, ''); // Strip HTML for a clean preview
+            descriptionText = plainText.substring(0, 50) + (plainText.length > 50 ? '...' : '');
+        }
+
+        let rowHTML = `
+            <div class="table-cell table-cell-title" onclick="openPage('${page.id}')" style="cursor: pointer;">${page.title}</div>
+            <div class="table-cell">${descriptionText}</div>
+        `;
 
         Object.values(database.properties).forEach(propDef => {
             const pageProp = page.properties[propDef.id];
@@ -240,6 +252,7 @@ function editPage(pageId) {
 function showPageEditModal(page, database) {
     let propertiesHtml = '';
     const propDefs = Object.values(database.properties);
+    const descriptionContent = page.properties.description ? page.properties.description.rich_text_content || '' : '';
 
     propDefs.forEach((propDef, idx) => {
         const propId = propDef.id;
@@ -286,6 +299,7 @@ function showPageEditModal(page, database) {
 
     const modalContent = `
         <div class="form-group"><label for="editPageTitle">Page Title</label><input type="text" id="editPageTitle" class="form-control" value="${page.title}"></div>
+        <div class="form-group"><label for="editPageDescription">Description</label><textarea id="editPageDescription" data-rich-text="true">${descriptionContent}</textarea></div>
         ${propertiesHtml}
         <div class="modal-actions">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -304,13 +318,28 @@ function showPageEditModal(page, database) {
 
 function confirmEditPage(pageId, databaseId) {
     const title = document.getElementById('editPageTitle').value;
-    const updates = { title: title, properties: {} };
+    const description = getRichTextContent('editPageDescription');
+    const updates = { 
+        title: title, 
+        properties: {
+            description: { 
+                name: 'Description', 
+                type: 'rich_text', 
+                value: '', 
+                rich_text_content: description 
+            }
+        } 
+    };
 
     document.querySelectorAll('.form-group[data-property-id]').forEach(propEl => {
         const propId = propEl.dataset.propertyId;
         const propType = propEl.dataset.propertyType;
-        const propName = propEl.querySelector('label').textContent;
-        const uniqueId = propEl.querySelector('[id^=editProp_]').id.replace('editProp_', '');
+        const propNameEl = propEl.querySelector('label');
+        if (!propNameEl) return;
+        const propName = propNameEl.textContent;
+        const inputEl = propEl.querySelector('[id^=editProp_], [id^=editRepetitionCheckbox_]');
+        if (!inputEl) return;
+        const uniqueId = inputEl.id.replace(/editProp_|editRepetitionCheckbox_/, '');
 
         if (propType === 'date') {
             const isRepeating = document.getElementById(`editRepetitionCheckbox_${uniqueId}`).checked;
