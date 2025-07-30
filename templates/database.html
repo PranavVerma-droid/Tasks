@@ -250,7 +250,18 @@ function addPageToDatabase(databaseId) {
 
 function showAddPageModal(databaseId, database) {
     let propertiesHtml = '';
+    let datePropIndex = null;
+    let dateProp = null;
+    // Find the date property (if any)
     Object.values(database.properties).forEach((prop, index) => {
+        if (prop.type === 'date' && datePropIndex === null) {
+            datePropIndex = index;
+            dateProp = prop;
+        }
+    });
+    // Build property inputs, skipping the date property (handled separately)
+    Object.values(database.properties).forEach((prop, index) => {
+        if (index === datePropIndex) return;
         propertiesHtml += `
             <div class=\"form-group\">
                 <label for=\"modalProp_${index}\">${prop.name}</label>
@@ -258,103 +269,99 @@ function showAddPageModal(databaseId, database) {
             </div>
         `;
     });
-    
-    // Repetition UI - check if database has date property
-    const hasDateProperty = Object.values(database.properties).some(prop => prop.type === 'date');
-    const repetitionHtml = hasDateProperty ? `
-        <div class=\"form-group\">
-            <label>Date & Repetition</label>
-            <input type="date" id="singleDate" class="form-control" placeholder="Select date">
-            <div style="margin-top:8px;">
-                <label><input type="checkbox" id="repetitionCheckbox" onchange="toggleRepetitionOptions()"> Repetition</label>
-            </div>
-        </div>
-        <div id=\"repetitionOptions\" style=\"display:none\">
+    // Date and repetition UI
+    let dateRepetitionHtml = '';
+    if (dateProp) {
+        dateRepetitionHtml = `
             <div class=\"form-group\">
-                <label>Start Date</label>
-                <input type=\"date\" id=\"repetitionStartDate\" class=\"form-control\">
-            </div>
-            <div class=\"form-group\">
-                <label>End Date (Optional)</label>
-                <input type=\"date\" id=\"repetitionEndDate\" class=\"form-control\">
-            </div>
-            <div class=\"form-group\">
-                <label>Frequency</label>
-                <select id=\"repetitionType\" class=\"form-control\" onchange=\"updateRepetitionOptions()\">
-                    <option value=\"daily\">Daily</option>
-                    <option value=\"weekly\">Weekly</option>
-                    <option value=\"monthly\">Monthly</option>
-                    <option value=\"custom\">Custom</option>
-                </select>
-            </div>
-            
-            <!-- Daily options -->
-            <div class=\"form-group\" id=\"dailyOptions\" style=\"display:none\">
-                <label>Every</label>
-                <div style=\"display: flex; align-items: center; gap: 8px;\">
-                    <input type=\"number\" id=\"dailyInterval\" class=\"form-control\" min=\"1\" value=\"1\" style=\"width: 80px;\">
-                    <span>day(s)</span>
+                <label for=\"modalDate\">${dateProp.name}</label>
+                <input type=\"date\" id=\"modalDate\" class=\"form-control\">
+                <div style=\"margin-top:8px;\">
+                    <label><input type=\"checkbox\" id=\"repetitionCheckbox\" onchange=\"toggleRepetitionOptions()\"> Repetition</label>
                 </div>
             </div>
-            
-            <!-- Weekly options -->
-            <div id=\"weeklyOptions\" style=\"display:none\">
+            <div id=\"repetitionOptions\" style=\"display:none; margin-bottom: 12px;\">
                 <div class=\"form-group\">
+                    <label>Start Date</label>
+                    <input type=\"date\" id=\"repetitionStartDate\" class=\"form-control\">
+                </div>
+                <div class=\"form-group\">
+                    <label>End Date (Optional)</label>
+                    <input type=\"date\" id=\"repetitionEndDate\" class=\"form-control\">
+                </div>
+                <div class=\"form-group\">
+                    <label>Frequency</label>
+                    <select id=\"repetitionType\" class=\"form-control\" onchange=\"updateRepetitionOptions()\">
+                        <option value=\"daily\">Daily</option>
+                        <option value=\"weekly\">Weekly</option>
+                        <option value=\"monthly\">Monthly</option>
+                        <option value=\"custom\">Custom</option>
+                    </select>
+                </div>
+                <!-- Daily options -->
+                <div class=\"form-group\" id=\"dailyOptions\" style=\"display:none\">
                     <label>Every</label>
                     <div style=\"display: flex; align-items: center; gap: 8px;\">
-                        <input type=\"number\" id=\"weeklyInterval\" class=\"form-control\" min=\"1\" value=\"1\" style=\"width: 80px;\">
-                        <span>week(s) on:</span>
+                        <input type=\"number\" id=\"dailyInterval\" class=\"form-control\" min=\"1\" value=\"1\" style=\"width: 80px;\">
+                        <span>day(s)</span>
                     </div>
                 </div>
-                <div class=\"form-group\">
-                    <div id=\"weeklyDaysCheckboxes\" style=\"display: flex; flex-wrap: wrap; gap: 12px;\">
-                        <label><input type=\"checkbox\" value=\"0\"> Sun</label>
-                        <label><input type=\"checkbox\" value=\"1\"> Mon</label>
-                        <label><input type=\"checkbox\" value=\"2\"> Tue</label>
-                        <label><input type=\"checkbox\" value=\"3\"> Wed</label>
-                        <label><input type=\"checkbox\" value=\"4\"> Thu</label>
-                        <label><input type=\"checkbox\" value=\"5\"> Fri</label>
-                        <label><input type=\"checkbox\" value=\"6\"> Sat</label>
+                <!-- Weekly options -->
+                <div id=\"weeklyOptions\" style=\"display:none\">
+                    <div class=\"form-group\">
+                        <label>Every</label>
+                        <div style=\"display: flex; align-items: center; gap: 8px;\">
+                            <input type=\"number\" id=\"weeklyInterval\" class=\"form-control\" min=\"1\" value=\"1\" style=\"width: 80px;\">
+                            <span>week(s) on:</span>
+                        </div>
+                    </div>
+                    <div class=\"form-group\">
+                        <div id=\"weeklyDaysCheckboxes\" style=\"display: flex; flex-wrap: wrap; gap: 12px;\">
+                            <label><input type=\"checkbox\" value=\"0\"> Sun</label>
+                            <label><input type=\"checkbox\" value=\"1\"> Mon</label>
+                            <label><input type=\"checkbox\" value=\"2\"> Tue</label>
+                            <label><input type=\"checkbox\" value=\"3\"> Wed</label>
+                            <label><input type=\"checkbox\" value=\"4\"> Thu</label>
+                            <label><input type=\"checkbox\" value=\"5\"> Fri</label>
+                            <label><input type=\"checkbox\" value=\"6\"> Sat</label>
+                        </div>
+                    </div>
+                </div>
+                <!-- Monthly options -->
+                <div id=\"monthlyOptions\" style=\"display:none\">
+                    <div class=\"form-group\">
+                        <label>Every</label>
+                        <div style=\"display: flex; align-items: center; gap: 8px;\">
+                            <input type=\"number\" id=\"monthlyInterval\" class=\"form-control\" min=\"1\" value=\"1\" style=\"width: 80px;\">
+                            <span>month(s) on day</span>
+                            <input type=\"number\" id=\"monthlyDay\" class=\"form-control\" min=\"1\" max=\"31\" value=\"1\" style=\"width: 80px;\">
+                        </div>
+                    </div>
+                </div>
+                <!-- Custom options -->
+                <div id=\"customOptions\" style=\"display:none\">
+                    <div class=\"form-group\">
+                        <label>Every</label>
+                        <div style=\"display: flex; align-items: center; gap: 8px;\">
+                            <input type=\"number\" id=\"customInterval\" class=\"form-control\" min=\"1\" value=\"2\" style=\"width: 80px;\">
+                            <span>week(s) on:</span>
+                        </div>
+                    </div>
+                    <div class=\"form-group\">
+                        <div id=\"customDaysCheckboxes\" style=\"display: flex; flex-wrap: wrap; gap: 12px;\">
+                            <label><input type=\"checkbox\" value=\"0\"> Sun</label>
+                            <label><input type=\"checkbox\" value=\"1\"> Mon</label>
+                            <label><input type=\"checkbox\" value=\"2\"> Tue</label>
+                            <label><input type=\"checkbox\" value=\"3\"> Wed</label>
+                            <label><input type=\"checkbox\" value=\"4\"> Thu</label>
+                            <label><input type=\"checkbox\" value=\"5\"> Fri</label>
+                            <label><input type=\"checkbox\" value=\"6\"> Sat</label>
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Monthly options -->
-            <div id=\"monthlyOptions\" style=\"display:none\">
-                <div class=\"form-group\">
-                    <label>Every</label>
-                    <div style=\"display: flex; align-items: center; gap: 8px;\">
-                        <input type=\"number\" id=\"monthlyInterval\" class=\"form-control\" min=\"1\" value=\"1\" style=\"width: 80px;\">
-                        <span>month(s) on day</span>
-                        <input type=\"number\" id=\"monthlyDay\" class=\"form-control\" min=\"1\" max=\"31\" value=\"1\" style=\"width: 80px;\">
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Custom options -->
-            <div id=\"customOptions\" style=\"display:none\">
-                <div class=\"form-group\">
-                    <label>Every</label>
-                    <div style=\"display: flex; align-items: center; gap: 8px;\">
-                        <input type=\"number\" id=\"customInterval\" class=\"form-control\" min=\"1\" value=\"2\" style=\"width: 80px;\">
-                        <span>week(s) on:</span>
-                    </div>
-                </div>
-                <div class=\"form-group\">
-                    <div id=\"customDaysCheckboxes\" style=\"display: flex; flex-wrap: wrap; gap: 12px;\">
-                        <label><input type=\"checkbox\" value=\"0\"> Sun</label>
-                        <label><input type=\"checkbox\" value=\"1\"> Mon</label>
-                        <label><input type=\"checkbox\" value=\"2\"> Tue</label>
-                        <label><input type=\"checkbox\" value=\"3\"> Wed</label>
-                        <label><input type=\"checkbox\" value=\"4\"> Thu</label>
-                        <label><input type=\"checkbox\" value=\"5\"> Fri</label>
-                        <label><input type=\"checkbox\" value=\"6\"> Sat</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-    ` : '';
-    
+        `;
+    }
     const modalContent = `
         <div class=\"form-group\">
             <label for=\"modalPageTitle\">Page Title</label>
@@ -364,7 +371,7 @@ function showAddPageModal(databaseId, database) {
             <label for=\"modalPageDescription\">Description</label>
             <textarea id=\"modalPageDescription\" data-rich-text=\"true\" data-placeholder=\"Enter description...\"></textarea>
         </div>
-        ${repetitionHtml}
+        ${dateRepetitionHtml}
         ${propertiesHtml}
         <div class=\"modal-actions\">
             <button type=\"button\" class=\"btn btn-secondary\" onclick=\"closeModal()\">Cancel</button>
@@ -376,9 +383,7 @@ function showAddPageModal(databaseId, database) {
     document.getElementById('modalOverlay').classList.add('active');
     setTimeout(() => {
         initRichTextEditorForModal();
-        if (hasDateProperty) {
-            updateRepetitionOptions();
-        }
+        updateRepetitionOptions();
     }, 200);
 }
 
@@ -701,23 +706,107 @@ function editPage(pageId) {
 function showPageEditModal(page) {
     let propertiesHtml = '';
     Object.values(page.properties).forEach((prop, idx) => {
-        if (prop.type === 'rich_text') {
+        if (prop.name === 'Description') {
+            return;
+        }
+        if (prop.type === 'date') {
+            let value = prop.value;
+            let isRepeating = value && typeof value === 'object' && value.repetition;
+            let dateValue = '';
+            let rep = value || {};
+            let config = rep.repetition_config || {};
+            if (!isRepeating) {
+                dateValue = typeof value === 'object' ? (value.start_date || '') : (value || '');
+            }
             propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id}" data-property-type="${prop.type}">
+                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="date">
                     <label for="editProp_${idx}">${prop.name}</label>
-                    <textarea id="editProp_${idx}" data-rich-text="true" data-placeholder="Edit ${prop.name.toLowerCase()}...">${prop.rich_text_content || ''}</textarea>
+                    <input type="date" id="editProp_${idx}" class="form-control" value="${dateValue}" style="${isRepeating ? 'display:none;' : ''}">
+                    <div style="margin-top:8px;">
+                        <label><input type="checkbox" id="editRepetitionCheckbox_${idx}" onchange="toggleEditRepetitionOptions(${idx})" ${isRepeating ? 'checked' : ''}> Repetition</label>
+                    </div>
+                    <div id="editRepetitionOptions_${idx}" style="display:${isRepeating ? '' : 'none'}; margin-bottom: 12px;">
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" id="editRepetitionStartDate_${idx}" class="form-control" value="${rep.start_date || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>End Date (Optional)</label>
+                            <input type="date" id="editRepetitionEndDate_${idx}" class="form-control" value="${config.end_date || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>Frequency</label>
+                            <select id="editRepetitionType_${idx}" class="form-control" onchange="updateEditRepetitionOptions(${idx})">
+                                <option value="daily" ${rep.repetition_type === 'daily' ? 'selected' : ''}>Daily</option>
+                                <option value="weekly" ${rep.repetition_type === 'weekly' ? 'selected' : ''}>Weekly</option>
+                                <option value="monthly" ${rep.repetition_type === 'monthly' ? 'selected' : ''}>Monthly</option>
+                                <option value="custom" ${rep.repetition_type === 'custom' ? 'selected' : ''}>Custom</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="editDailyOptions_${idx}" style="display:${rep.repetition_type === 'daily' ? '' : 'none'}">
+                            <label>Every</label>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="number" id="editDailyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
+                                <span>day(s)</span>
+                            </div>
+                        </div>
+                        <div id="editWeeklyOptions_${idx}" style="display:${rep.repetition_type === 'weekly' ? '' : 'none'}">
+                            <div class="form-group">
+                                <label>Every</label>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="number" id="editWeeklyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
+                                    <span>week(s) on:</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div id="editWeeklyDaysCheckboxes_${idx}" style="display: flex; flex-wrap: wrap; gap: 12px;">
+                                    ${[0,1,2,3,4,5,6].map(d => `<label><input type="checkbox" value="${d}" ${config.days_of_week && config.days_of_week.includes(d) ? 'checked' : ''}> ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]}</label>`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                        <div id="editMonthlyOptions_${idx}" style="display:${rep.repetition_type === 'monthly' ? '' : 'none'}">
+                            <div class="form-group">
+                                <label>Every</label>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="number" id="editMonthlyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
+                                    <span>month(s) on day</span>
+                                    <input type="number" id="editMonthlyDay_${idx}" class="form-control" min="1" max="31" value="${config.day_of_month || 1}" style="width: 80px;">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="editCustomOptions_${idx}" style="display:${rep.repetition_type === 'custom' ? '' : 'none'}">
+                            <div class="form-group">
+                                <label>Every</label>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="number" id="editCustomInterval_${idx}" class="form-control" min="1" value="${config.interval || 2}" style="width: 80px;">
+                                    <span>week(s) on:</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div id="editCustomDaysCheckboxes_${idx}" style="display: flex; flex-wrap: wrap; gap: 12px;">
+                                    ${[0,1,2,3,4,5,6].map(d => `<label><input type="checkbox" value="${d}" ${config.days_of_week && config.days_of_week.includes(d) ? 'checked' : ''}> ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]}</label>`).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (prop.type === 'rich_text') {
+            propertiesHtml += `
+                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
+                    <label for="editProp_${idx}">${prop.name}</label>
+                    <textarea id="editProp_${idx}" data-rich-text="true" data-placeholder="Edit ${prop.name.toLowerCase()}...">${prop.rich_text_content || prop.value || ''}</textarea>
                 </div>
             `;
         } else {
             propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id}" data-property-type="${prop.type}">
+                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
                     <label for="editProp_${idx}">${prop.name}</label>
                     <input type="text" id="editProp_${idx}" class="form-control" value="${prop.value || ''}" placeholder="Edit ${prop.name.toLowerCase()}...">
                 </div>
             `;
         }
     });
-    
     const modalContent = `
         <div class="form-group">
             <label for="editPageTitle">Page Title</label>
@@ -729,20 +818,40 @@ function showPageEditModal(page) {
             <button type="button" class="btn btn-primary" onclick="confirmEditPage('${page.id}')">Save Changes</button>
         </div>
     `;
-    
     document.getElementById('modalTitle').textContent = 'Edit Page';
     document.getElementById('modalContent').innerHTML = modalContent;
     document.getElementById('modalOverlay').classList.add('active');
-    
-    // Initialize rich text editors for all rich_text fields
     setTimeout(() => {
         const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]');
-        console.log('Found rich text fields to initialize:', richTextFields.length);
         richTextFields.forEach(el => {
-            console.log('Initializing rich text editor for:', el.id);
             initRichTextEditor('#' + el.id, el.getAttribute('data-placeholder') || 'Edit...');
         });
     }, 300);
+}
+
+function toggleEditRepetitionOptions(idx) {
+    const checkbox = document.getElementById(`editRepetitionCheckbox_${idx}`);
+    const options = document.getElementById(`editRepetitionOptions_${idx}`);
+    const singleDate = document.getElementById(`editProp_${idx}`);
+    if (checkbox && checkbox.checked) {
+        options.style.display = '';
+        if (singleDate) singleDate.style.display = 'none';
+        updateEditRepetitionOptions(idx);
+    } else {
+        options.style.display = 'none';
+        if (singleDate) singleDate.style.display = '';
+    }
+}
+
+function updateEditRepetitionOptions(idx) {
+    const type = document.getElementById(`editRepetitionType_${idx}`).value;
+    const optionGroups = ['Daily', 'Weekly', 'Monthly', 'Custom'];
+    optionGroups.forEach(group => {
+        const groupDiv = document.getElementById(`edit${group}Options_${idx}`);
+        if (groupDiv) groupDiv.style.display = 'none';
+    });
+    const targetGroup = document.getElementById(`edit${type.charAt(0).toUpperCase() + type.slice(1)}Options_${idx}`);
+    if (targetGroup) targetGroup.style.display = '';
 }
 
 function confirmEditPage(pageId) {
