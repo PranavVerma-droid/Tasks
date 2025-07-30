@@ -832,6 +832,40 @@ def update_database():
     save_database(database)
     return jsonify({'success': True})
 
+def recursively_delete_page_and_contents(page_id: str, data: NotionData):
+    """
+    Deletes a page and all its sub-content (databases, which in turn contain pages)
+    recursively from the database.
+    """
+    # Base case: if page doesn't exist in our loaded data, assume it's already deleted.
+    if page_id not in data.pages:
+        return
+
+    page_to_delete = data.pages[page_id]
+
+    # Recursively delete child databases and their contents
+    if page_to_delete.databases:
+        # Iterate over a copy since the underlying data will be modified
+        for db_id in list(page_to_delete.databases):
+            if db_id in data.databases:
+                db_to_delete = data.databases[db_id]
+                # Recursively delete all pages within this database
+                if db_to_delete.pages:
+                    for sub_page_id in list(db_to_delete.pages):
+                        recursively_delete_page_and_contents(sub_page_id, data)
+                
+                # After deleting all sub-pages, delete the database itself
+                delete_database_from_db(db_id)
+                # Remove from in-memory model to prevent issues
+                if db_id in data.databases:
+                    del data.databases[db_id]
+
+    # Finally, delete the page itself
+    delete_page_from_db(page_id)
+    # Remove from in-memory model
+    if page_id in data.pages:
+        del data.pages[page_id]
+
 @app.route('/api/delete_database', methods=['POST'])
 def delete_database():
     database_id = request.json.get('database_id')
@@ -842,19 +876,19 @@ def delete_database():
     
     database = data.databases[database_id]
     
-    # Delete all pages in the database
+    # Delete all pages in the database recursively
     if database.pages:
-        for page_id in database.pages:
-            delete_page_from_db(page_id)
+        for page_id in list(database.pages): # Iterate over a copy
+            recursively_delete_page_and_contents(page_id, data)
     
-    # Remove database from parent page
+    # Remove database from parent page's list
     if database.parent_page_id and database.parent_page_id in data.pages:
         parent_page = data.pages[database.parent_page_id]
         if parent_page.databases and database_id in parent_page.databases:
             parent_page.databases.remove(database_id)
             save_page(parent_page)
     
-    # Delete the database
+    # Delete the database itself
     delete_database_from_db(database_id)
     
     return jsonify({'success': True})
@@ -869,15 +903,15 @@ def delete_page():
     
     page = data.pages[page_id]
     
-    # Remove page from parent database
+    # Remove page from parent database's list of pages
     if page.parent_database_id and page.parent_database_id in data.databases:
         parent_db = data.databases[page.parent_database_id]
         if parent_db.pages and page_id in parent_db.pages:
             parent_db.pages.remove(page_id)
             save_database(parent_db)
     
-    # Delete the page
-    delete_page_from_db(page_id)
+    # Call the recursive deletion function
+    recursively_delete_page_and_contents(page_id, data)
     
     return jsonify({'success': True})
 
