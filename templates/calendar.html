@@ -45,6 +45,7 @@
     </div>
 </div>
 <script>
+window.completionLogs = {{ completion_logs | tojson | safe }};
 let currentDate = new Date();
 let currentMonth = currentDate.getMonth();
 let currentYear = currentDate.getFullYear();
@@ -215,6 +216,16 @@ function renderCalendar(calendarItems, currentMonth, currentYear) {
                 
                 // Show all property columns as tooltip
                 eventElement.title = Object.values(event.page.properties).map(p => `${p.name}: ${p.value || p.rich_text_content || ''}`).join('\n');
+
+                // Check if this event is completed for this date
+                let isCompleted = false;
+                if (window.completionLogs && window.completionLogs[event.page.id]) {
+                    const log = window.completionLogs[event.page.id].find(l => l.date === dateString && l.completed);
+                    if (log) isCompleted = true;
+                }
+                if (isCompleted) {
+                    eventElement.classList.add('completed');
+                }
                 
                 eventsContainer.appendChild(eventElement);
             });

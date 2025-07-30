@@ -550,11 +550,13 @@ def view_page(page_id):
 @app.route('/calendar')
 def calendar_view():
     data = load_data()
-    
     # Get all pages with date properties
     calendar_items = []
+    all_completion_logs = {}
     for page in data.pages.values():
         date_prop = get_date_property(page)
+        # Collect completion logs for this page
+        all_completion_logs[page.id] = [asdict(log) for log in data.completion_logs.get(page.id, [])]
         if date_prop and date_prop.value:
             try:
                 if isinstance(date_prop.value, dict) and date_prop.value.get('repetition'):
@@ -580,29 +582,22 @@ def calendar_view():
                         date_str = date_prop.value.get('start_date', '')
                     else:
                         date_str = date_prop.value if isinstance(date_prop.value, str) else ''
-                    
                     if date_str:
-                        # Validate the date string
                         try:
-                            # Handle different date formats
                             if 'T' in date_str:
                                 datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                             else:
                                 datetime.strptime(date_str, '%Y-%m-%d')
-                            
                             calendar_items.append({
                                 'page': page,
                                 'date': date_str,
                                 'is_repeating': False
                             })
                         except ValueError:
-                            print(f"Invalid date string: {date_str}")
                             continue
             except Exception as e:
-                print(f"Error processing date property for page {page.id}: {e}")
                 continue
-    
-    return render_template('calendar.html', calendar_items=calendar_items, data=data)
+    return render_template('calendar.html', calendar_items=calendar_items, data=data, completion_logs=all_completion_logs)
 
 @app.route('/api/create_database', methods=['POST'])
 def create_database():
