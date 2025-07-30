@@ -219,6 +219,41 @@ function renderPropertyEditor(property, propertyDefinition) {
     }
 }
 
+function renderPropertyInput(property, index) {
+    const inputId = `modalProp_${index}`;
+    let inputHtml = '';
+    switch (property.type) {
+        case 'text':
+            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
+            break;
+        case 'number':
+            inputHtml = `<input type="number" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
+            break;
+        case 'date':
+            inputHtml = `<input type="date" id="${inputId}" class="form-control">`;
+            break;
+        case 'select':
+            const options = (property.options || []).map(option =>
+                `<option value="${option}">${option}</option>`
+            ).join('');
+            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select ${property.name.toLowerCase()}...</option>${options}</select>`;
+            break;
+        case 'status':
+            const statusOptions = ['Not Started', 'In Progress', 'Done'];
+            const statusOptionsHtml = statusOptions.map(option =>
+                `<option value="${option}">${option}</option>`
+            ).join('');
+            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select status...</option>${statusOptionsHtml}</select>`;
+            break;
+        case 'rich_text':
+            inputHtml = `<textarea id="${inputId}" class="form-control" data-rich-text="true" data-placeholder="Enter ${property.name.toLowerCase()}..."></textarea>`;
+            break;
+        default:
+            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
+    }
+    return inputHtml;
+}
+
 // Property update functions
 function updateProperty(propertyId, type, value) {
     if (!window.currentPageId) {

@@ -526,8 +526,20 @@ function addPageToDatabase(databaseId) {
 
 function showAddPageModal(databaseId, database) {
     let propertiesHtml = '';
+    let datePropIndex = null;
+    let dateProp = null;
     
+    // Find the date property (if any)
     Object.values(database.properties).forEach((prop, index) => {
+        if (prop.type === 'date' && datePropIndex === null) {
+            datePropIndex = index;
+            dateProp = prop;
+        }
+    });
+    
+    // Build property inputs, skipping the date property (handled separately)
+    Object.values(database.properties).forEach((prop, index) => {
+        if (index === datePropIndex) return;
         propertiesHtml += `
             <div class="form-group">
                 <label for="modalProp_${index}">${prop.name}</label>
@@ -535,7 +547,105 @@ function showAddPageModal(databaseId, database) {
             </div>
         `;
     });
-    
+
+    // Date and repetition UI
+    let dateRepetitionHtml = '';
+    if (dateProp) {
+        dateRepetitionHtml = `
+            <div class="form-group">
+                <label for="modalDate">${dateProp.name}</label>
+                <input type="date" id="modalDate" class="form-control">
+                <div style="margin-top:8px;">
+                    <label><input type="checkbox" id="repetitionCheckbox" onchange="toggleRepetitionOptions()"> Repetition</label>
+                </div>
+            </div>
+            <div id="repetitionOptions" style="display:none; margin-bottom: 12px;">
+                <div class="form-group">
+                    <label>Start Date</label>
+                    <input type="date" id="repetitionStartDate" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>End Date (Optional)</label>
+                    <input type="date" id="repetitionEndDate" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Frequency</label>
+                    <select id="repetitionType" class="form-control" onchange="updateRepetitionOptions()">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+                
+                <!-- Daily options -->
+                <div class="form-group" id="dailyOptions" style="display:none">
+                    <label>Every</label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="dailyInterval" class="form-control" min="1" value="1" style="width: 80px;">
+                        <span>day(s)</span>
+                    </div>
+                </div>
+                
+                <!-- Weekly options -->
+                <div id="weeklyOptions" style="display:none">
+                    <div class="form-group">
+                        <label>Every</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="weeklyInterval" class="form-control" min="1" value="1" style="width: 80px;">
+                            <span>week(s) on:</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div id="weeklyDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 12px;">
+                            <label><input type="checkbox" value="0"> Sun</label>
+                            <label><input type="checkbox" value="1"> Mon</label>
+                            <label><input type="checkbox" value="2"> Tue</label>
+                            <label><input type="checkbox" value="3"> Wed</label>
+                            <label><input type="checkbox" value="4"> Thu</label>
+                            <label><input type="checkbox" value="5"> Fri</label>
+                            <label><input type="checkbox" value="6"> Sat</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Monthly options -->
+                <div id="monthlyOptions" style="display:none">
+                    <div class="form-group">
+                        <label>Every</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="monthlyInterval" class="form-control" min="1" value="1" style="width: 80px;">
+                            <span>month(s) on day</span>
+                            <input type="number" id="monthlyDay" class="form-control" min="1" max="31" value="1" style="width: 80px;">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Custom options -->
+                <div id="customOptions" style="display:none">
+                    <div class="form-group">
+                        <label>Every</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="customInterval" class="form-control" min="1" value="2" style="width: 80px;">
+                            <span>week(s) on:</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div id="customDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 12px;">
+                            <label><input type="checkbox" value="0"> Sun</label>
+                            <label><input type="checkbox" value="1"> Mon</label>
+                            <label><input type="checkbox" value="2"> Tue</label>
+                            <label><input type="checkbox" value="3"> Wed</label>
+                            <label><input type="checkbox" value="4"> Thu</label>
+                            <label><input type="checkbox" value="5"> Fri</label>
+                            <label><input type="checkbox" value="6"> Sat</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     const modalContent = `
         <div class="form-group">
             <label for="modalPageTitle">Page Title</label>
@@ -545,58 +655,52 @@ function showAddPageModal(databaseId, database) {
             <label for="modalPageDescription">Description</label>
             <textarea id="modalPageDescription" data-rich-text="true" data-placeholder="Enter description..."></textarea>
         </div>
+        ${dateRepetitionHtml}
         ${propertiesHtml}
         <div class="modal-actions">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
             <button type="button" class="btn btn-primary" onclick="confirmCreatePage('${databaseId}')">Create Page</button>
         </div>
     `;
-    
     document.getElementById('modalTitle').textContent = 'Add Page';
     document.getElementById('modalContent').innerHTML = modalContent;
     document.getElementById('modalOverlay').classList.add('active');
-    
-    // Initialize our custom rich text editor for all rich text fields in modal
     setTimeout(() => {
         initRichTextEditorForModal();
+        updateRepetitionOptions(); // Initialize the display
     }, 200);
 }
 
-function renderPropertyInput(property, index) {
-    const inputId = `modalProp_${index}`;
-    let inputHtml = '';
+function toggleRepetitionOptions() {
+    const checkbox = document.getElementById('repetitionCheckbox');
+    const options = document.getElementById('repetitionOptions');
+    const singleDate = document.getElementById('modalDate');
     
-    switch (property.type) {
-        case 'text':
-            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-            break;
-        case 'number':
-            inputHtml = `<input type="number" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-            break;
-        case 'date':
-            inputHtml = `<input type="date" id="${inputId}" class="form-control">`;
-            break;
-        case 'select':
-            const options = property.options.map(option => 
-                `<option value="${option}">${option}</option>`
-            ).join('');
-            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select ${property.name.toLowerCase()}...</option>${options}</select>`;
-            break;
-        case 'status':
-            const statusOptions = ['Not Started', 'In Progress', 'Done'];
-            const statusOptionsHtml = statusOptions.map(option => 
-                `<option value="${option}">${option}</option>`
-            ).join('');
-            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select status...</option>${statusOptionsHtml}</select>`;
-            break;
-        case 'rich_text':
-            inputHtml = `<textarea id="${inputId}" data-rich-text="true" data-placeholder="Enter ${property.name.toLowerCase()}..."></textarea>`;
-            break;
-        default:
-            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
+    if (checkbox && checkbox.checked) {
+        options.style.display = '';
+        if (singleDate) singleDate.style.display = 'none';
+        updateRepetitionOptions();
+    } else {
+        options.style.display = 'none';
+        if (singleDate) singleDate.style.display = '';
     }
+}
+
+function updateRepetitionOptions() {
+    const type = document.getElementById('repetitionType').value;
     
-    return inputHtml;
+    // Hide all option groups
+    const optionGroups = ['dailyOptions', 'weeklyOptions', 'monthlyOptions', 'customOptions'];
+    optionGroups.forEach(groupId => {
+        const group = document.getElementById(groupId);
+        if (group) group.style.display = 'none';
+    });
+    
+    // Show relevant option group
+    const targetGroup = document.getElementById(type + 'Options');
+    if (targetGroup) {
+        targetGroup.style.display = '';
+    }
 }
 
 function confirmCreatePage(databaseId) {
@@ -613,7 +717,7 @@ function confirmCreatePage(databaseId) {
         alert('Please enter a page title');
         return;
     }
-    
+
     // Get database to know what properties to collect
     fetch(`/api/get_database_data/${databaseId}`)
         .then(response => response.json())
@@ -622,8 +726,21 @@ function confirmCreatePage(databaseId) {
                 const database = data.database;
                 const properties = {};
                 
-                // Collect all property values
+                let datePropIndex = null;
+                let datePropId = null;
+                
+                // Find date property
                 Object.values(database.properties).forEach((prop, index) => {
+                    if (prop.type === 'date' && datePropIndex === null) {
+                        datePropIndex = index;
+                        datePropId = prop.id;
+                    }
+                });
+                
+                // Collect all property values except date
+                Object.values(database.properties).forEach((prop, index) => {
+                    if (index === datePropIndex) return; // Skip date property
+                    
                     const inputElement = document.getElementById(`modalProp_${index}`);
                     if (inputElement) {
                         let value = '';
@@ -644,27 +761,100 @@ function confirmCreatePage(databaseId) {
                     }
                 });
                 
+                // Handle date/repetition
+                if (datePropId !== null) {
+                    const repetitionChecked = document.getElementById('repetitionCheckbox') && document.getElementById('repetitionCheckbox').checked;
+                    
+                    if (!repetitionChecked) {
+                        // Single date
+                        const dateValue = document.getElementById('modalDate').value;
+                        if (dateValue) {
+                            properties[datePropId] = {
+                                name: database.properties[datePropId].name,
+                                type: 'date',
+                                value: dateValue
+                            };
+                        }
+                    } else {
+                        // Repetition
+                        const repetitionType = document.getElementById('repetitionType').value;
+                        const startDate = document.getElementById('repetitionStartDate').value;
+                        const endDate = document.getElementById('repetitionEndDate').value;
+                        
+                        if (!startDate) {
+                            alert('Please select a start date for repetition');
+                            return;
+                        }
+                        
+                        const repetitionConfig = {
+                            start_date: startDate,
+                            repetition: true,
+                            repetition_type: repetitionType,
+                            repetition_config: {
+                                end_date: endDate || null
+                            }
+                        };
+                        
+                        // Add type-specific configuration
+                        if (repetitionType === 'daily') {
+                            const interval = parseInt(document.getElementById('dailyInterval').value) || 1;
+                            repetitionConfig.repetition_config.interval = interval;
+                        } else if (repetitionType === 'weekly') {
+                            const interval = parseInt(document.getElementById('weeklyInterval').value) || 1;
+                            const daysChecked = Array.from(document.querySelectorAll('#weeklyDaysCheckboxes input[type=checkbox]:checked'))
+                                .map(cb => parseInt(cb.value));
+                            
+                            if (daysChecked.length === 0) {
+                                alert('Please select at least one day of the week');
+                                return;
+                            }
+                            
+                            repetitionConfig.repetition_config.interval = interval;
+                            repetitionConfig.repetition_config.days_of_week = daysChecked;
+                        } else if (repetitionType === 'monthly') {
+                            const interval = parseInt(document.getElementById('monthlyInterval').value) || 1;
+                            const dayOfMonth = parseInt(document.getElementById('monthlyDay').value) || 1;
+                            
+                            repetitionConfig.repetition_config.interval = interval;
+                            repetitionConfig.repetition_config.day_of_month = dayOfMonth;
+                        } else if (repetitionType === 'custom') {
+                            const interval = parseInt(document.getElementById('customInterval').value) || 2;
+                            const daysChecked = Array.from(document.querySelectorAll('#customDaysCheckboxes input[type=checkbox]:checked'))
+                                .map(cb => parseInt(cb.value));
+                            
+                            if (daysChecked.length === 0) {
+                                alert('Please select at least one day for custom repetition');
+                                return;
+                            }
+                            
+                            repetitionConfig.repetition_config.interval = interval;
+                            repetitionConfig.repetition_config.days_of_week = daysChecked;
+                        }
+                        
+                        properties[datePropId] = {
+                            name: database.properties[datePropId].name,
+                            type: 'date',
+                            value: repetitionConfig
+                        };
+                    }
+                }
+                
                 // Add description property
                 if (descriptionElement) {
-                    // Add a small delay to ensure rich text editor is fully initialized
                     setTimeout(() => {
                         const descriptionContent = getRichTextContent('modalPageDescription');
-                        console.log('Description content retrieved:', descriptionContent);
-                        if (descriptionContent.trim()) {
+                        if (descriptionContent && descriptionContent.trim()) {
                             properties['description'] = {
                                 name: 'Description',
                                 type: 'rich_text',
                                 value: '',
                                 rich_text_content: descriptionContent.trim()
                             };
-                            console.log('Description property added:', properties['description']);
                         }
                         
-                        console.log('Final properties object:', properties);
                         createPageWithProperties(databaseId, title, properties);
                     }, 100);
                 } else {
-                    console.log('Final properties object:', properties);
                     createPageWithProperties(databaseId, title, properties);
                 }
             }
@@ -672,441 +862,6 @@ function confirmCreatePage(databaseId) {
         .catch(error => {
             console.error('Error getting database data:', error);
         });
-    
-    closeModal();
-}
-
-function createPageWithProperties(databaseId, title, properties) {
-    const requestData = {
-        database_id: databaseId,
-        title: title,
-        properties: properties
-    };
-    
-    console.log('Sending create page request:', requestData);
-    
-    fetch('/api/create_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Create page response:', data);
-        if (data.success) {
-            loadDatabaseData(databaseId);
-        } else {
-            alert('Error creating page: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error creating page:', error);
-        alert('Error creating page');
-    });
-}
-
-function createPage(databaseId, title) {
-    fetch('/api/create_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            database_id: databaseId,
-            title: title,
-            properties: {}
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadDatabaseData(databaseId);
-        }
-    })
-    .catch(error => {
-        console.error('Error creating page:', error);
-    });
-}
-
-function updatePageTitle(pageId, newTitle) {
-    fetch('/api/update_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            page_id: pageId,
-            updates: {
-                title: newTitle
-            }
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Page title updated');
-        }
-    })
-    .catch(error => {
-        console.error('Error updating page title:', error);
-    });
-}
-
-function savePage() {
-    const newTitle = document.getElementById('pageTitle').textContent;
-    const descriptionContent = getRichTextContent('#pageDescriptionContainer_editor');
-    
-    // Update page title
-    updatePageTitle(currentPageId, newTitle);
-    
-    // Update page description
-    fetch('/api/update_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            page_id: currentPageId,
-            updates: {
-                properties: {
-                    description: {
-                        name: 'Description',
-                        type: 'rich_text',
-                        value: '',
-                        rich_text_content: descriptionContent
-                    }
-                }
-            }
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Page description updated');
-        }
-    })
-    .catch(error => {
-        console.error('Error updating page description:', error);
-    });
-}
-
-function addProperty() {
-    const propertiesList = document.getElementById('modalPropertiesList');
-    if (!propertiesList) {
-        console.error('Properties list not found');
-        return;
-    }
-    
-    const propertyItem = document.createElement('div');
-    propertyItem.className = 'property-item';
-    propertyItem.innerHTML = `
-        <input type="text" class="form-control property-name" placeholder="Property name">
-        <select class="form-control property-type">
-            <option value="text">Text</option>
-            <option value="rich_text">Rich Text</option>
-            <option value="date">Date</option>
-            <option value="select">Select</option>
-            <option value="status">Status</option>
-            <option value="number">Number</option>
-        </select>
-        <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
-    `;
-    propertiesList.appendChild(propertyItem);
-}
-
-function removeProperty(button) {
-    button.parentElement.remove();
-}
-
-function editDatabase(databaseId) {
-    // Load database data and show edit modal
-    fetch(`/api/get_database_data/${databaseId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const database = data.database;
-                showDatabaseEditModal(database);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading database data:', error);
-        });
-}
-
-function showDatabaseEditModal(database) {
-    let propertiesHtml = '';
-    
-    Object.values(database.properties).forEach((prop, index) => {
-        propertiesHtml += `
-            <div class="property-item" data-property-id="${prop.id}">
-                <input type="text" class="form-control property-name" value="${prop.name}" placeholder="Property name">
-                <select class="form-control property-type">
-                    <option value="text" ${prop.type === 'text' ? 'selected' : ''}>Text</option>
-                    <option value="rich_text" ${prop.type === 'rich_text' ? 'selected' : ''}>Rich Text</option>
-                    <option value="date" ${prop.type === 'date' ? 'selected' : ''}>Date</option>
-                    <option value="select" ${prop.type === 'select' ? 'selected' : ''}>Select</option>
-                    <option value="status" ${prop.type === 'status' ? 'selected' : ''}>Status</option>
-                    <option value="number" ${prop.type === 'number' ? 'selected' : ''}>Number</option>
-                </select>
-                <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
-            </div>
-        `;
-    });
-    
-    const modalContent = `
-        <div class="form-group">
-            <label for="editDatabaseName">Database Name</label>
-            <input type="text" id="editDatabaseName" class="form-control" value="${database.name}">
-        </div>
-        <div class="form-group">
-            <label>Properties</label>
-            <div id="editPropertiesList">
-                ${propertiesHtml}
-            </div>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="addPropertyToEdit()">Add Property</button>
-        </div>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-danger" onclick="deleteDatabase('${database.id}')">Delete Database</button>
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="confirmUpdateDatabase('${database.id}')">Update Database</button>
-        </div>
-    `;
-    
-    document.getElementById('modalTitle').textContent = 'Edit Database';
-    document.getElementById('modalContent').innerHTML = modalContent;
-    document.getElementById('modalOverlay').classList.add('active');
-}
-
-function addPropertyToEdit() {
-    const propertiesList = document.getElementById('editPropertiesList');
-    if (!propertiesList) {
-        console.error('Edit properties list not found');
-        return;
-    }
-    
-    const propertyItem = document.createElement('div');
-    propertyItem.className = 'property-item';
-    propertyItem.innerHTML = `
-        <input type="text" class="form-control property-name" placeholder="Property name">
-        <select class="form-control property-type">
-            <option value="text">Text</option>
-            <option value="rich_text">Rich Text</option>
-            <option value="date">Date</option>
-            <option value="select">Select</option>
-            <option value="status">Status</option>
-            <option value="number">Number</option>
-        </select>
-        <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
-    `;
-    propertiesList.appendChild(propertyItem);
-}
-
-function confirmUpdateDatabase(databaseId) {
-    const nameElement = document.getElementById('editDatabaseName');
-    if (!nameElement) {
-        console.error('Database name element not found');
-        return;
-    }
-    
-    const name = nameElement.value;
-    if (!name || !name.trim()) {
-        alert('Please enter a database name');
-        return;
-    }
-    
-    const properties = {};
-    document.querySelectorAll('#editPropertiesList .property-item').forEach((item, index) => {
-        const propName = item.querySelector('.property-name').value;
-        const propType = item.querySelector('.property-type').value;
-        
-        if (propName) {
-            const propId = item.dataset.propertyId || `prop_${index}`;
-            properties[propId] = {
-                name: propName,
-                type: propType,
-                options: propType === 'select' || propType === 'status' ? ['Not Started', 'In Progress', 'Done'] : []
-            };
-        }
-    });
-    
-    updateDatabase(databaseId, name, properties);
-    closeModal();
-}
-
-function updateDatabase(databaseId, name, properties) {
-    fetch('/api/update_database', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            database_id: databaseId,
-            name: name,
-            properties: properties
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Error updating database: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error updating database:', error);
-        alert('Error updating database');
-    });
-}
-
-function deleteDatabase(databaseId) {
-    if (confirm('Are you sure you want to delete this database? This action cannot be undone.')) {
-        fetch('/api/delete_database', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                database_id: databaseId
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Error deleting database: ' + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(error => {
-            console.error('Error deleting database:', error);
-            alert('Error deleting database');
-        });
-    }
-}
-
-function editPage(pageId) {
-    // Load page data and show edit modal
-    fetch(`/api/get_page_data/${pageId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const page = data.page;
-                showPageEditModal(page);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading page data:', error);
-        });
-}
-
-function showPageEditModal(page) {
-    let propertiesHtml = '';
-    Object.values(page.properties).forEach((prop, idx) => {
-        if (prop.type === 'rich_text') {
-            propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id}" data-property-type="${prop.type}">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <textarea id="editProp_${idx}" data-rich-text="true" data-placeholder="Edit ${prop.name.toLowerCase()}...">${prop.rich_text_content || ''}</textarea>
-                </div>
-            `;
-        } else {
-            propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id}" data-property-type="${prop.type}">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <input type="text" id="editProp_${idx}" class="form-control" value="${prop.value || ''}" placeholder="Edit ${prop.name.toLowerCase()}...">
-                </div>
-            `;
-        }
-    });
-    
-    const modalContent = `
-        <div class="form-group">
-            <label for="editPageTitle">Page Title</label>
-            <input type="text" id="editPageTitle" class="form-control" value="${page.title}">
-        </div>
-        ${propertiesHtml}
-        <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="confirmEditPage('${page.id}')">Save Changes</button>
-        </div>
-    `;
-    
-    document.getElementById('modalTitle').textContent = 'Edit Page';
-    document.getElementById('modalContent').innerHTML = modalContent;
-    document.getElementById('modalOverlay').classList.add('active');
-    
-    // Initialize rich text editors for all rich_text fields
-    setTimeout(() => {
-        const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]');
-        richTextFields.forEach(el => {
-            initRichTextEditor('#' + el.id, el.getAttribute('data-placeholder') || 'Edit...');
-        });
-    }, 200);
-}
-
-function confirmEditPage(pageId) {
-    const newTitle = document.getElementById('editPageTitle').value;
-    const modal = document.getElementById('modalContent');
-    const formGroups = modal.querySelectorAll('.form-group[data-property-id]'); // Only get property form groups
-    const updates = { title: newTitle, properties: {} };
-    
-    formGroups.forEach((group) => {
-        const propertyId = group.getAttribute('data-property-id');
-        const propertyType = group.getAttribute('data-property-type');
-        const label = group.querySelector('label');
-        const propertyName = label ? label.textContent : propertyId;
-        
-        if (propertyType === 'rich_text') {
-            const textarea = group.querySelector('textarea[data-rich-text="true"]');
-            if (textarea) {
-                const value = getRichTextContent('#' + textarea.id);
-                updates.properties[propertyId] = {
-                    name: propertyName,
-                    type: 'rich_text',
-                    value: '',
-                    rich_text_content: value
-                };
-            }
-        } else {
-            const input = group.querySelector('input.form-control');
-            if (input) {
-                updates.properties[propertyId] = {
-                    name: propertyName,
-                    type: propertyType,
-                    value: input.value
-                };
-            }
-        }
-    });
-    
-    console.log('Updates being sent:', updates); // Debug log
-    
-    fetch('/api/update_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            page_id: pageId,
-            updates: updates
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            console.error('Update failed:', data);
-            alert('Failed to update page: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error updating page:', error);
-        alert('Error updating page');
-    });
     
     closeModal();
 }

@@ -435,35 +435,90 @@ def get_status_property(page: Page) -> Optional[Property]:
     return None
 
 def calculate_repetition_dates(start_date: str, repetition_type: str, repetition_config: dict) -> List[str]:
-    """Calculate all dates for a repeating task"""
+    """Calculate all dates for a repeating task, supporting advanced options."""
     try:
         start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end_date = repetition_config.get('end_date')
+        if end_date:
+            end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        else:
+            # Default: 1 year from start
+            end = start + timedelta(days=365)
+        
         dates = []
         
         if repetition_type == 'daily':
+            interval_days = repetition_config.get('interval', 1)
             current = start
-            for _ in range(365):  # Limit to 1 year
-                dates.append(current.isoformat())
-                current += timedelta(days=1)
+            while current <= end:
+                dates.append(current.date().isoformat())
+                current += timedelta(days=interval_days)
         
         elif repetition_type == 'weekly':
-            days_of_week = repetition_config.get('days', [0, 1, 2, 3, 4, 5, 6])  # Monday=0
-            current = start
-            for _ in range(52):  # Limit to 1 year
-                if current.weekday() in days_of_week:
-                    dates.append(current.isoformat())
-                current += timedelta(days=1)
+            days_of_week = repetition_config.get('days_of_week', [start.weekday()])
+            interval_weeks = repetition_config.get('interval', 1)
+            
+            # Start from the beginning of the start week
+            current_week_start = start - timedelta(days=start.weekday())
+            week_count = 0
+            
+            while current_week_start <= end:
+                # Only process weeks that match the interval
+                if week_count % interval_weeks == 0:
+                    for day_of_week in days_of_week:
+                        date = current_week_start + timedelta(days=day_of_week)
+                        if start <= date <= end:
+                            dates.append(date.date().isoformat())
+                
+                current_week_start += timedelta(weeks=1)
+                week_count += 1
         
-        elif repetition_type == 'custom_days':
-            interval = repetition_config.get('interval', 1)
-            days = repetition_config.get('days', [0, 1, 2, 3, 4, 5, 6])
-            current = start
-            for _ in range(365):
-                if current.weekday() in days:
-                    dates.append(current.isoformat())
-                current += timedelta(days=interval)
+        elif repetition_type == 'monthly':
+            interval_months = repetition_config.get('interval', 1)
+            day_of_month = repetition_config.get('day_of_month', start.day)
+            current = start.replace(day=min(day_of_month, calendar.monthrange(start.year, start.month)[1]))
+            
+            while current <= end:
+                dates.append(current.date().isoformat())
+                
+                # Move to next month
+                if current.month == 12:
+                    next_year = current.year + 1
+                    next_month = 1
+                else:
+                    next_year = current.year
+                    next_month = current.month + interval_months
+                    
+                    # Handle month overflow
+                    while next_month > 12:
+                        next_month -= 12
+                        next_year += 1
+                
+                # Adjust day if it doesn't exist in the target month
+                max_day = calendar.monthrange(next_year, next_month)[1]
+                next_day = min(day_of_month, max_day)
+                
+                current = current.replace(year=next_year, month=next_month, day=next_day)
         
-        return dates
+        elif repetition_type == 'custom':
+            # Handle custom patterns - same as weekly but with more flexibility
+            days_of_week = repetition_config.get('days_of_week', [start.weekday()])
+            interval_weeks = repetition_config.get('interval', 1)
+            
+            current_week_start = start - timedelta(days=start.weekday())
+            week_count = 0
+            
+            while current_week_start <= end:
+                if week_count % interval_weeks == 0:
+                    for day_of_week in days_of_week:
+                        date = current_week_start + timedelta(days=day_of_week)
+                        if start <= date <= end:
+                            dates.append(date.date().isoformat())
+                
+                current_week_start += timedelta(weeks=1)
+                week_count += 1
+        
+        return sorted(list(set(dates)))
     except ValueError as e:
         print(f"Invalid start date for repetition: {start_date}")
         return []
@@ -509,7 +564,7 @@ def calendar_view():
                     if start_date:
                         dates = calculate_repetition_dates(
                             start_date,
-                            date_prop.value['repetition_type'],
+                            date_prop.value.get('repetition_type', 'daily'),
                             repetition_config
                         )
                         for date in dates:
@@ -517,15 +572,24 @@ def calendar_view():
                                 'page': page,
                                 'date': date,
                                 'is_repeating': True,
-                                'repetition_config': date_prop.value.get('repetition_config', {})
+                                'repetition_config': repetition_config
                             })
                 else:
                     # Single date
-                    date_str = date_prop.value if isinstance(date_prop.value, str) else date_prop.value.get('start_date', '')
+                    if isinstance(date_prop.value, dict):
+                        date_str = date_prop.value.get('start_date', '')
+                    else:
+                        date_str = date_prop.value if isinstance(date_prop.value, str) else ''
+                    
                     if date_str:
                         # Validate the date string
                         try:
-                            datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                            # Handle different date formats
+                            if 'T' in date_str:
+                                datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                            else:
+                                datetime.strptime(date_str, '%Y-%m-%d')
+                            
                             calendar_items.append({
                                 'page': page,
                                 'date': date_str,
