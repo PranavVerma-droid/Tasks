@@ -30,6 +30,14 @@
 
 {% block content %}
 <div class="calendar-page-container">
+    <div class="calendar-sidebar">
+        <div class="calendar-sidebar-section">
+            <h4>Databases</h4>
+            <div id="database-filter-tree">
+                <!-- Database filter tree is generated here by JS -->
+            </div>
+        </div>
+    </div>
     <div class="calendar-main">
         <div id="calendar-views">
             <!-- Month View -->
@@ -84,6 +92,7 @@
 .nav-arrows .btn:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
 
 .calendar-page-container { display: flex; height: calc(100vh - 120px); }
+.calendar-sidebar { width: 250px; background: #121212; padding: 15px; border-right: 1px solid #333; }
 .calendar-main { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
 #calendar-views { flex-grow: 1; position: relative; }
 .view { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
@@ -130,6 +139,15 @@
 .task-sidebar-actions .btn { width: 100%; margin-top: 8px; }
 .prop-value { padding-left: 22px; color: #ccc; }
 .rich-text-preview { padding-left: 22px; }
+
+/* Database Filter Tree */
+.calendar-sidebar-section h4 { font-size: 18px; margin-bottom: 10px; color: #fff; }
+#database-filter-tree { max-height: 400px; overflow-y: auto; }
+.database-filter-item { padding: 8px 0; border-bottom: 1px solid #333; display: flex; align-items: center; }
+.database-filter-item label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.db-color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.all-toggle { font-weight: 500; }
+.all-toggle label { margin: 0; }
 </style>
 
 <script>
@@ -141,8 +159,71 @@ const completionLogs = {{ completion_logs | tojson }};
 let activeDatabaseIds = Object.keys(allDatabases);
 
 document.addEventListener('DOMContentLoaded', function() {
+    buildDatabaseFilterTree();
     renderCalendar();
 });
+
+function buildDatabaseFilterTree() {
+    const container = document.getElementById('database-filter-tree');
+    if (!container) return;
+    container.innerHTML = '';
+
+    // Create a "Show/Hide All" checkbox
+    const allToggleItem = document.createElement('div');
+    allToggleItem.className = 'database-filter-item all-toggle';
+    allToggleItem.innerHTML = `
+        <label>
+            <input type="checkbox" id="all-db-toggle" checked>
+            <strong>Show/Hide All</strong>
+        </label>
+    `;
+    container.appendChild(allToggleItem);
+
+    for (const dbId in allDatabases) {
+        const db = allDatabases[dbId];
+        const item = document.createElement('div');
+        item.className = 'database-filter-item';
+        item.innerHTML = `
+            <label>
+                <input type="checkbox" class="db-filter-checkbox" value="${db.id}" checked>
+                <span class="db-color-dot" style="background-color: ${db.color};"></span>
+                <span>${db.name}</span>
+            </label>
+        `;
+        container.appendChild(item);
+    }
+
+    // Add event listeners
+    document.getElementById('all-db-toggle').addEventListener('change', function(e) {
+        const isChecked = e.target.checked;
+        document.querySelectorAll('.db-filter-checkbox').forEach(checkbox => {
+            checkbox.checked = isChecked;
+        });
+        updateActiveDatabasesAndRender();
+    });
+
+    document.querySelectorAll('.db-filter-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', updateActiveDatabasesAndRender);
+    });
+}
+
+function updateActiveDatabasesAndRender() {
+    activeDatabaseIds = Array.from(document.querySelectorAll('.db-filter-checkbox:checked')).map(cb => cb.value);
+    
+    const allCheckboxes = document.querySelectorAll('.db-filter-checkbox');
+    const allToggle = document.getElementById('all-db-toggle');
+    if (activeDatabaseIds.length === allCheckboxes.length) {
+        allToggle.checked = true;
+        allToggle.indeterminate = false;
+    } else if (activeDatabaseIds.length === 0) {
+        allToggle.checked = false;
+        allToggle.indeterminate = false;
+    } else {
+        allToggle.indeterminate = true;
+    }
+
+    renderCalendar();
+}
 
 function switchView(view) {
     currentView = view;
@@ -224,6 +305,7 @@ function renderMonthView() {
                 eventEl.classList.add('completed');
             }
             eventEl.textContent = event.page.title;
+            eventEl.style.borderLeftColor = event.database_color;
             eventEl.onclick = () => showTaskDetails(event.page, event.date);
             eventsContainer.appendChild(eventEl);
         });

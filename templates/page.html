@@ -83,13 +83,8 @@
                 </div>
             </div>
             <div class="database-table">
-                <div class="database-table-header" style="display: grid; grid-template-columns: 300px 200px{% for prop in database.properties.values() %} 1fr{% endfor %} 100px;">
-                    <div class="table-cell table-cell-title">Title</div>
-                    <div class="table-cell">Description</div>
-                    {% for prop_id, prop in database.properties.items() %}
-                    <div class="table-cell">{{ prop.name }}</div>
-                    {% endfor %}
-                    <div class="table-cell table-cell-actions">Actions</div>
+                <div class="database-table-header">
+                    <!-- Header is now rendered by JS -->
                 </div>
                 <div class="database-table-body" id="databaseBody_{{ database.id }}">
                     <!-- Table body rendered by JS -->
@@ -124,279 +119,34 @@
 .date-time-inputs .form-control {
     flex-grow: 1;
 }
+.database-table-header {
+    display: grid;
+    /* grid-template-columns will be set by JS */
+    gap: 10px;
+    padding: 12px 15px;
+    background-color: #2a2a2a;
+    font-weight: 600;
+    border-bottom: 1px solid #444;
+}
+.database-table-row {
+    display: grid;
+    /* grid-template-columns must match the header */
+    gap: 10px;
+    padding: 12px 15px;
+    border-bottom: 1px solid #333;
+    align-items: center;
+}
+.database-table-row:hover {
+    background-color: #2c2c2c;
+}
 </style>
 
+{% endblock %}
+
+{% block extra_js %}
 <script>
-const currentPageId = '{{ page.id }}';
-const pageDescriptionData = {% if page.properties.description and page.properties.description.rich_text_content %}{{ page.properties.description.rich_text_content | tojson }}{% else %}""{% endif %};
-
-// Make currentPageId globally accessible for auto-save
-window.currentPageId = currentPageId;
-
-document.addEventListener('DOMContentLoaded', function() {
-    loadAllDatabases();
-});
-
-function loadAllDatabases() {
-    const databases = {{ databases | tojson }};
-    databases.forEach(database => {
-        window.currentDatabaseId = database.id; // Set for context
-        loadDatabaseData(database.id);
-    });
-}
-
-function addDatabase() {
-    const modalContent = `
-        <div class="form-group">
-            <label for="modalDatabaseName">Database Name</label>
-            <input type="text" id="modalDatabaseName" class="form-control" placeholder="Enter database name">
-        </div>
-        <div class="form-group">
-            <label>Properties</label>
-            <div id="modalPropertiesList">
-                <div class="property-item">
-                    <input type="text" class="form-control property-name" placeholder="Property name">
-                    <select class="form-control property-type">
-                        <option value="text">Text</option>
-                        <option value="rich_text">Rich Text</option>
-                        <option value="date">Date</option>
-                        <option value="select">Select</option>
-                        <option value="status">Status</option>
-                        <option value="number">Number</option>
-                    </select>
-                    <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
-                </div>
-            </div>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="addProperty()">Add Property</button>
-        </div>
-        <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="confirmCreateDatabase()">Create Database</button>
-        </div>
-    `;
-    showModal('Create Database', modalContent);
-}
-
-function confirmCreateDatabase() {
-    const name = document.getElementById('modalDatabaseName').value.trim();
-    if (!name) {
-        alert('Please enter a database name');
-        return;
-    }
-    
-    const properties = {};
-    document.querySelectorAll('#modalPropertiesList .property-item').forEach((item, index) => {
-        const propName = item.querySelector('.property-name').value;
-        const propType = item.querySelector('.property-type').value;
-        if (propName) {
-            properties[`prop_${Date.now()}_${index}`] = { name: propName, type: propType, options: [] };
-        }
-    });
-    
-    fetch('/api/create_database', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page_id: currentPageId, name: name, properties: properties })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Error creating database: ' + data.error);
-        }
-    });
-    closeModal();
-}
-
-function addPageToDatabase(databaseId) {
-    fetch(`/api/get_database_data/${databaseId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showAddPageModal(databaseId, data.database);
-            }
-        });
-}
-
-function showAddPageModal(databaseId, database) {
-    let propertiesHtml = '';
-    let dateProp = null;
-    let datePropIndex = -1;
-
-    Object.values(database.properties).forEach((prop, index) => {
-        if (prop.type === 'date' && !dateProp) {
-            dateProp = prop;
-            datePropIndex = index;
-        } else {
-            propertiesHtml += `
-                <div class="form-group">
-                    <label for="modalProp_${index}">${prop.name}</label>
-                    ${renderPropertyInput(prop, index)}
-                </div>
-            `;
-        }
-    });
-
-    let dateRepetitionHtml = '';
-    if (dateProp) {
-        dateRepetitionHtml = `
-            <div class="form-group">
-                <label>${dateProp.name}</label>
-                <div id="singleDateContainer">
-                    <div class="date-time-inputs">
-                        <input type="date" id="modalDate" class="form-control">
-                        <input type="time" id="modalStartTime" class="form-control" placeholder="Start time">
-                        <span>to</span>
-                        <input type="time" id="modalEndTime" class="form-control" placeholder="End time">
-                    </div>
-                    <small class="form-text">Leave times empty for an all-day event.</small>
-                </div>
-                <div style="margin-top:8px;">
-                    <label><input type="checkbox" id="repetitionCheckbox" onchange="toggleRepetitionOptions()"> Repetition</label>
-                </div>
-            </div>
-            <div id="repetitionOptions" style="display:none; margin-bottom: 12px; border: 1px solid #444; padding: 10px; border-radius: 5px;">
-                <div class="form-group"><label>Start Date & Time</label><div class="date-time-inputs"><input type="date" id="repetitionStartDate" class="form-control"><input type="time" id="repetitionStartTime" class="form-control"><span>to</span><input type="time" id="repetitionEndTime" class="form-control"></div></div>
-                <div class="form-group"><label>End Date (Optional)</label><input type="date" id="repetitionEndDate" class="form-control"></div>
-                <div class="form-group"><label>Frequency</label><select id="repetitionType" class="form-control" onchange="updateRepetitionOptions()"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="custom">Custom</option></select></div>
-                <div id="dailyOptions" style="display:none"><label>Every <input type="number" id="dailyInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> day(s)</label></div>
-                <div id="weeklyOptions" style="display:none"><label>Every <input type="number" id="weeklyInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> week(s) on:</label><div id="weeklyDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => `<label><input type="checkbox" value="${i}"> ${day}</label>`).join('')}</div></div>
-                <div id="monthlyOptions" style="display:none"><label>Every <input type="number" id="monthlyInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> month(s) on day <input type="number" id="monthlyDay" value="1" min="1" max="31" class="form-control" style="width:70px; display:inline-block;"></label></div>
-                <div id="customOptions" style="display:none"><label>Every <input type="number" id="customInterval" value="1" min="1" class="form-control" style="width:70px; display:inline-block;"> week(s) on:</label><div id="customDaysCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px;">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => `<label><input type="checkbox" value="${i}"> ${day}</label>`).join('')}</div></div>
-            </div>
-        `;
-    }
-
-    const modalContent = `
-        <div class="form-group">
-            <label for="modalPageTitle">Page Title</label>
-            <input type="text" id="modalPageTitle" class="form-control" placeholder="Enter page title">
-        </div>
-        <div class="form-group">
-            <label for="modalPageDescription">Description</label>
-            <textarea id="modalPageDescription" data-rich-text="true" data-placeholder="Enter description..."></textarea>
-        </div>
-        ${dateRepetitionHtml}
-        ${propertiesHtml}
-        <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="confirmCreatePage('${databaseId}', ${datePropIndex})">Create Page</button>
-        </div>
-    `;
-    showModal('Add Page', modalContent, () => {
-        initRichTextEditorForModal();
-        updateRepetitionOptions();
-    });
-}
-
-function toggleRepetitionOptions() {
-    const checkbox = document.getElementById('repetitionCheckbox');
-    const singleDateContainer = document.getElementById('singleDateContainer');
-    const repetitionOptions = document.getElementById('repetitionOptions');
-    
-    singleDateContainer.style.display = checkbox.checked ? 'none' : 'block';
-    repetitionOptions.style.display = checkbox.checked ? 'block' : 'none';
-    if (checkbox.checked) {
-        updateRepetitionOptions();
-    }
-}
-
-function updateRepetitionOptions() {
-    const type = document.getElementById('repetitionType').value;
-    ['dailyOptions', 'weeklyOptions', 'monthlyOptions', 'customOptions'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
-    const targetGroup = document.getElementById(type + 'Options');
-    if (targetGroup) targetGroup.style.display = 'block';
-}
-
-function confirmCreatePage(databaseId, datePropIndex) {
-    const title = document.getElementById('modalPageTitle').value;
-    if (!title.trim()) {
-        alert('Please enter a page title');
-        return;
-    }
-
-    fetch(`/api/get_database_data/${databaseId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const database = data.database;
-                const properties = {};
-                
-                Object.values(database.properties).forEach((prop, index) => {
-                    if (index === datePropIndex) return;
-                    const inputElement = document.getElementById(`modalProp_${index}`);
-                    if (inputElement) {
-                        let value = prop.type === 'rich_text' ? getRichTextContent(`modalProp_${index}`) : inputElement.value;
-                        if (value) {
-                            properties[prop.id] = { name: prop.name, type: prop.type, value: prop.type === 'rich_text' ? '' : value, rich_text_content: prop.type === 'rich_text' ? value : null };
-                        }
-                    }
-                });
-
-                if (datePropIndex !== -1) {
-                    const datePropId = Object.keys(database.properties)[datePropIndex];
-                    const datePropName = Object.values(database.properties)[datePropIndex].name;
-                    const repetitionChecked = document.getElementById('repetitionCheckbox').checked;
-
-                    let dateValue = {};
-                    if (!repetitionChecked) {
-                        const singleDate = document.getElementById('modalDate').value;
-                        if (singleDate) {
-                            dateValue = { start_date: singleDate, end_date: singleDate, start_time: document.getElementById('modalStartTime').value || null, end_time: document.getElementById('modalEndTime').value || null, repetition: false };
-                        }
-                    } else {
-                        const startDate = document.getElementById('repetitionStartDate').value;
-                        if (!startDate) { alert('Please select a start date for repetition.'); return; }
-                        const repetitionType = document.getElementById('repetitionType').value;
-                        dateValue = { start_date: startDate, start_time: document.getElementById('repetitionStartTime').value || null, end_time: document.getElementById('repetitionEndTime').value || null, repetition: true, repetition_type: repetitionType, repetition_config: { end_date: document.getElementById('repetitionEndDate').value || null } };
-                        if (repetitionType === 'daily') {
-                            dateValue.repetition_config.interval = parseInt(document.getElementById('dailyInterval').value) || 1;
-                        } else if (repetitionType === 'weekly' || repetitionType === 'custom') {
-                            const interval = parseInt(document.getElementById(`${repetitionType}Interval`).value) || 1;
-                            const daysChecked = Array.from(document.querySelectorAll(`#${repetitionType}DaysCheckboxes input:checked`)).map(cb => parseInt(cb.value));
-                            if (daysChecked.length === 0) { alert('Please select at least one day of the week.'); return; }
-                            dateValue.repetition_config.interval = interval;
-                            dateValue.repetition_config.days_of_week = daysChecked;
-                        } else if (repetitionType === 'monthly') {
-                            dateValue.repetition_config.interval = parseInt(document.getElementById('monthlyInterval').value) || 1;
-                            dateValue.repetition_config.day_of_month = parseInt(document.getElementById('monthlyDay').value) || 1;
-                        }
-                    }
-                    if (dateValue.start_date) {
-                         properties[datePropId] = { name: datePropName, type: 'date', value: dateValue };
-                    }
-                }
-
-                const descriptionContent = getRichTextContent('modalPageDescription');
-                if (descriptionContent && descriptionContent.trim()) {
-                    properties['description'] = { name: 'Description', type: 'rich_text', value: '', rich_text_content: descriptionContent };
-                }
-
-                createPageWithProperties(databaseId, title, properties);
-            }
-        });
-    
-    closeModal();
-}
-
-function createPageWithProperties(databaseId, title, properties) {
-    fetch('/api/create_page', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ database_id: databaseId, title: title, properties: properties })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadDatabaseData(databaseId);
-        } else {
-            alert('Error creating page: ' + data.error);
-        }
-    });
-}
+    // Set global page ID for app.js to use.
+    // This script runs before app.js because of how base.html is structured.
+    window.currentPageId = '{{ page.id }}';
 </script>
 {% endblock %}

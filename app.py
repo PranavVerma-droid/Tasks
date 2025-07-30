@@ -48,6 +48,7 @@ class Database:
     parent_page_id: str = None  # Parent page ID if this database is nested
     created_at: str = None
     updated_at: str = None
+    color: str = '#3b82f6'  # Default color for the database
 
 @dataclass
 class Block:
@@ -86,9 +87,15 @@ def init_database():
             name TEXT NOT NULL,
             parent_page_id TEXT,
             created_at TEXT,
-            updated_at TEXT
+            updated_at TEXT,
+            color TEXT DEFAULT '#3b82f6'
         )
     ''')
+    # Migration: Add color column if missing
+    cursor.execute("PRAGMA table_info(databases)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'color' not in columns:
+        cursor.execute("ALTER TABLE databases ADD COLUMN color TEXT DEFAULT '#3b82f6'")
     
     # Create properties table (for both page and database properties)
     cursor.execute('''
@@ -192,7 +199,8 @@ def load_data():
             pages=[],
             parent_page_id=row['parent_page_id'],
             created_at=row['created_at'],
-            updated_at=row['updated_at']
+            updated_at=row['updated_at'],
+            color=row['color'] if 'color' in row.keys() and row['color'] else '#3b82f6'
         )
         data.databases[row['id']] = database
     
@@ -338,9 +346,9 @@ def save_database(database: Database):
     cursor = conn.cursor()
     
     cursor.execute('''
-        INSERT OR REPLACE INTO databases (id, name, parent_page_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (database.id, database.name, database.parent_page_id, database.created_at, database.updated_at))
+        INSERT OR REPLACE INTO databases (id, name, parent_page_id, created_at, updated_at, color)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (database.id, database.name, database.parent_page_id, database.created_at, database.updated_at, database.color))
     
     # Save properties
     cursor.execute('DELETE FROM properties WHERE owner_id = ? AND owner_type = ?', (database.id, 'database'))
@@ -551,6 +559,7 @@ def calendar_view():
     for page in data.pages.values():
         date_prop = get_date_property(page)
         all_completion_logs[page.id] = [asdict(log) for log in data.completion_logs.get(page.id, [])]
+        db_color = data.databases[page.parent_database_id].color if page.parent_database_id in data.databases else '#3b82f6'
         if date_prop and date_prop.value:
             try:
                 if isinstance(date_prop.value, dict):
@@ -558,7 +567,6 @@ def calendar_view():
                     start_date = date_prop.value.get('start_date')
                     start_time = date_prop.value.get('start_time') or None
                     end_time = date_prop.value.get('end_time') or None
-
                     if is_repeating and start_date:
                         repetition_config = date_prop.value.get('repetition_config', {})
                         repetition_type = date_prop.value.get('repetition_type', 'daily')
@@ -570,7 +578,8 @@ def calendar_view():
                                 'start_time': start_time,
                                 'end_time': end_time,
                                 'is_repeating': True,
-                                'is_all_day': not start_time
+                                'is_all_day': not start_time,
+                                'database_color': db_color
                             })
                     elif start_date:
                         calendar_items.append({
@@ -579,22 +588,22 @@ def calendar_view():
                             'start_time': start_time,
                             'end_time': end_time,
                             'is_repeating': False,
-                            'is_all_day': not start_time
+                            'is_all_day': not start_time,
+                            'database_color': db_color
                         })
-
-                elif isinstance(date_prop.value, str): # Backwards compatibility
+                elif isinstance(date_prop.value, str):
                     calendar_items.append({
                         'page': asdict(page),
                         'date': date_prop.value,
                         'start_time': None,
                         'end_time': None,
                         'is_repeating': False,
-                        'is_all_day': True
+                        'is_all_day': True,
+                        'database_color': db_color
                     })
             except Exception as e:
                 print(f"Could not process date for page {page.id}: {e}")
                 continue
-
     return render_template('calendar.html', calendar_items=calendar_items, data=data, completion_logs=all_completion_logs)
 
 @app.route('/api/create_database', methods=['POST'])
@@ -603,17 +612,11 @@ def create_database():
     page_id = request.json.get('page_id')
     name = request.json.get('name', 'Untitled Database')
     properties = request.json.get('properties', {})
+    color = request.json.get('color', '#3b82f6')
     current_time = datetime.now().isoformat()
     
     # Convert properties to Property objects
-    db_properties = {}
-    for prop_id, prop_data in properties.items():
-        db_properties[prop_id] = Property(
-            id=prop_id,
-            name=prop_data['name'],
-            type=prop_data['type'],
-            options=prop_data.get('options', [])
-        )
+    db_properties = {prop_id: Property(id=prop_id, name=prop_data['name'], type=prop_data['type'], options=prop_data.get('options', [])) for prop_id, prop_data in properties.items()}
     
     # Create database
     database = Database(
@@ -623,7 +626,8 @@ def create_database():
         pages=[],
         parent_page_id=page_id,
         created_at=current_time,
-        updated_at=current_time
+        updated_at=current_time,
+        color=color
     )
     
     # Create block for database
@@ -799,6 +803,7 @@ def update_database():
     database_id = request.json.get('database_id')
     name = request.json.get('name')
     properties = request.json.get('properties', {})
+    color = request.json.get('color', '#3b82f6')
     
     data = load_data()
     if database_id not in data.databases:
@@ -808,6 +813,7 @@ def update_database():
     
     # Update database name
     database.name = name
+    database.color = color
     
     # Convert properties to Property objects
     db_properties = {}
