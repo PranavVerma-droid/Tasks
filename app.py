@@ -203,7 +203,7 @@ def load_data():
             id=row['id'],
             name=row['name'],
             type=row['type'],
-            value=json.loads(row['value']) if row['value'] else None,
+            value=json.loads(row['value']) if row['value'] and row['value'] != 'null' else None,
             options=json.loads(row['options']) if row['options'] else None,
             rich_text_content=row['rich_text_content']
         )
@@ -467,7 +467,7 @@ def calculate_repetition_dates(start_date: str, repetition_type: str, repetition
                 if week_count % interval_weeks == 0:
                     for day_of_week in days_of_week:
                         date = current_week_start + timedelta(days=day_of_week)
-                        if start <= date <= end:
+                        if start.date() <= date.date() <= end.date():
                             dates.append(date.date().isoformat())
                 
                 current_week_start += timedelta(weeks=1)
@@ -479,27 +479,23 @@ def calculate_repetition_dates(start_date: str, repetition_type: str, repetition
             current = start.replace(day=min(day_of_month, calendar.monthrange(start.year, start.month)[1]))
             
             while current <= end:
-                dates.append(current.date().isoformat())
+                if start.date() <= current.date() <= end.date():
+                    dates.append(current.date().isoformat())
                 
                 # Move to next month
-                if current.month == 12:
-                    next_year = current.year + 1
-                    next_month = 1
-                else:
-                    next_year = current.year
-                    next_month = current.month + interval_months
-                    
-                    # Handle month overflow
-                    while next_month > 12:
-                        next_month -= 12
-                        next_year += 1
-                
-                # Adjust day if it doesn't exist in the target month
-                max_day = calendar.monthrange(next_year, next_month)[1]
-                next_day = min(day_of_month, max_day)
-                
-                current = current.replace(year=next_year, month=next_month, day=next_day)
-        
+                current_month = current.month + interval_months
+                current_year = current.year
+                while current_month > 12:
+                    current_month -= 12
+                    current_year += 1
+
+                try:
+                    max_day = calendar.monthrange(current_year, current_month)[1]
+                    next_day = min(day_of_month, max_day)
+                    current = current.replace(year=current_year, month=current_month, day=next_day)
+                except calendar.IllegalMonthError:
+                    break
+
         elif repetition_type == 'custom':
             # Handle custom patterns - same as weekly but with more flexibility
             days_of_week = repetition_config.get('days_of_week', [start.weekday()])
@@ -512,15 +508,15 @@ def calculate_repetition_dates(start_date: str, repetition_type: str, repetition
                 if week_count % interval_weeks == 0:
                     for day_of_week in days_of_week:
                         date = current_week_start + timedelta(days=day_of_week)
-                        if start <= date <= end:
+                        if start.date() <= date.date() <= end.date():
                             dates.append(date.date().isoformat())
                 
                 current_week_start += timedelta(weeks=1)
                 week_count += 1
         
         return sorted(list(set(dates)))
-    except ValueError as e:
-        print(f"Invalid start date for repetition: {start_date}")
+    except (ValueError, TypeError) as e:
+        print(f"Invalid start date for repetition: {start_date}, error: {e}")
         return []
     except Exception as e:
         print(f"Error calculating repetition dates: {e}")
@@ -538,7 +534,7 @@ def view_page(page_id):
         return redirect(url_for('index'))
     
     page = data.pages[page_id]
-    databases = [data.databases[db_id] for db_id in page.databases] if page.databases else []
+    databases = [data.databases[db_id] for db_id in page.databases if db_id in data.databases] if page.databases else []
     
     # Get hierarchy for breadcrumb
     hierarchy_response = get_page_hierarchy(page_id)
@@ -550,7 +546,6 @@ def view_page(page_id):
 @app.route('/calendar')
 def calendar_view():
     data = load_data()
-    # Get all pages with date properties
     calendar_items = []
     all_completion_logs = {}
     for page in data.pages.values():
@@ -558,42 +553,48 @@ def calendar_view():
         all_completion_logs[page.id] = [asdict(log) for log in data.completion_logs.get(page.id, [])]
         if date_prop and date_prop.value:
             try:
-                if isinstance(date_prop.value, dict) and date_prop.value.get('repetition'):
-                    repetition_config = date_prop.value.get('repetition_config', {})
-                    start_date = date_prop.value.get('start_date', '')
-                    if start_date:
-                        dates = calculate_repetition_dates(
-                            start_date,
-                            date_prop.value.get('repetition_type', 'daily'),
-                            repetition_config
-                        )
+                if isinstance(date_prop.value, dict):
+                    is_repeating = date_prop.value.get('repetition', False)
+                    start_date = date_prop.value.get('start_date')
+                    start_time = date_prop.value.get('start_time') or None
+                    end_time = date_prop.value.get('end_time') or None
+
+                    if is_repeating and start_date:
+                        repetition_config = date_prop.value.get('repetition_config', {})
+                        repetition_type = date_prop.value.get('repetition_type', 'daily')
+                        dates = calculate_repetition_dates(start_date, repetition_type, repetition_config)
                         for date in dates:
                             calendar_items.append({
                                 'page': asdict(page),
                                 'date': date,
+                                'start_time': start_time,
+                                'end_time': end_time,
                                 'is_repeating': True,
-                                'repetition_config': repetition_config
+                                'is_all_day': not start_time
                             })
-                else:
-                    if isinstance(date_prop.value, dict):
-                        date_str = date_prop.value.get('start_date', '')
-                    else:
-                        date_str = date_prop.value if isinstance(date_prop.value, str) else ''
-                    if date_str:
-                        try:
-                            if 'T' in date_str:
-                                datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                            else:
-                                datetime.strptime(date_str, '%Y-%m-%d')
-                            calendar_items.append({
-                                'page': asdict(page),
-                                'date': date_str,
-                                'is_repeating': False
-                            })
-                        except ValueError:
-                            continue
+                    elif start_date:
+                        calendar_items.append({
+                            'page': asdict(page),
+                            'date': start_date,
+                            'start_time': start_time,
+                            'end_time': end_time,
+                            'is_repeating': False,
+                            'is_all_day': not start_time
+                        })
+
+                elif isinstance(date_prop.value, str): # Backwards compatibility
+                    calendar_items.append({
+                        'page': asdict(page),
+                        'date': date_prop.value,
+                        'start_time': None,
+                        'end_time': None,
+                        'is_repeating': False,
+                        'is_all_day': True
+                    })
             except Exception as e:
+                print(f"Could not process date for page {page.id}: {e}")
                 continue
+
     return render_template('calendar.html', calendar_items=calendar_items, data=data, completion_logs=all_completion_logs)
 
 @app.route('/api/create_database', methods=['POST'])
@@ -661,22 +662,13 @@ def create_page():
     # Convert properties to Property objects
     page_properties = {}
     for prop_id, prop_data in properties.items():
-        if prop_data['type'] == 'rich_text':
-            page_properties[prop_id] = Property(
-                id=prop_id,
-                name=prop_data['name'],
-                type='rich_text',
-                value='',
-                rich_text_content=prop_data.get('rich_text_content', '')
-            )
-        else:
-            page_properties[prop_id] = Property(
-                id=prop_id,
-                name=prop_data['name'],
-                type=prop_data['type'],
-                value=prop_data.get('value'),
-                rich_text_content=None
-            )
+        page_properties[prop_id] = Property(
+            id=prop_id,
+            name=prop_data['name'],
+            type=prop_data['type'],
+            value=prop_data.get('value'),
+            rich_text_content=prop_data.get('rich_text_content')
+        )
     
     # Create page
     page = Page(
@@ -726,24 +718,20 @@ def update_page():
     page = data.pages[page_id]
     
     # Update properties
-    for prop_id, prop_data in updates.get('properties', {}).items():
-        # Create or update the property
-        if prop_data.get('type') == 'rich_text':
-            page.properties[prop_id] = Property(
-                id=prop_id,
-                name=prop_data.get('name', prop_id),
-                type='rich_text',
-                value='',
-                rich_text_content=prop_data.get('rich_text_content', '')
-            )
-        else:
-            page.properties[prop_id] = Property(
-                id=prop_id,
-                name=prop_data.get('name', prop_id),
-                type=prop_data.get('type', 'text'),
-                value=prop_data.get('value'),
-                rich_text_content=None
-            )
+    if 'properties' in updates:
+        for prop_id, prop_data in updates.get('properties', {}).items():
+            if prop_id in page.properties:
+                page.properties[prop_id].value = prop_data.get('value')
+                if prop_data.get('type') == 'rich_text':
+                    page.properties[prop_id].rich_text_content = prop_data.get('rich_text_content')
+            else:
+                 page.properties[prop_id] = Property(
+                    id=prop_id,
+                    name=prop_data['name'],
+                    type=prop_data['type'],
+                    value=prop_data.get('value'),
+                    rich_text_content=prop_data.get('rich_text_content')
+                )
     
     # Update title
     if 'title' in updates:
@@ -798,7 +786,7 @@ def get_database_data(database_id):
         return jsonify({'success': False, 'error': 'Database not found'})
     
     database = data.databases[database_id]
-    pages = [data.pages[page_id] for page_id in database.pages] if database.pages else []
+    pages = [data.pages[page_id] for page_id in database.pages if page_id in data.pages] if database.pages else []
     
     return jsonify({
         'success': True,
@@ -984,7 +972,7 @@ def navigate_to_page(page_id):
         return redirect(url_for('index'))
     
     page = data.pages[page_id]
-    databases = [data.databases[db_id] for db_id in page.databases] if page.databases else []
+    databases = [data.databases[db_id] for db_id in page.databases if db_id in data.databases] if page.databases else []
     
     # Get hierarchy for breadcrumb
     hierarchy_response = get_page_hierarchy(page_id)
@@ -1002,7 +990,7 @@ def navigate_to_database(database_id):
         return redirect(url_for('index'))
     
     database = data.databases[database_id]
-    pages = [data.pages[page_id] for page_id in database.pages] if database.pages else []
+    pages = [data.pages[page_id] for page_id in database.pages if page_id in data.pages] if database.pages else []
     
     # Get hierarchy for breadcrumb
     hierarchy_response = get_database_hierarchy(database_id)

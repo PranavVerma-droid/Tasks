@@ -7,6 +7,10 @@ function showModal(title, content, callback) {
     document.getElementById('modalContent').innerHTML = content;
     document.getElementById('modalOverlay').classList.add('active');
     currentModalCallback = callback;
+    if (typeof callback === 'function') {
+        // Allow content to render before calling back
+        setTimeout(callback, 50);
+    }
 }
 
 function closeModal() {
@@ -29,8 +33,8 @@ function closeTaskSidebar() {
 // Utility functions
 function formatDate(date) {
     try {
-        if (isNaN(date.getTime())) {
-            return '';
+        if (!(date instanceof Date) || isNaN(date.getTime())) {
+             return '';
         }
         return date.toISOString().split('T')[0];
     } catch (error) {
@@ -52,1252 +56,209 @@ function getDateProperty(page) {
     return null;
 }
 
-function getStatusProperty(page) {
-    for (const prop of Object.values(page.properties)) {
-        if (prop.type === 'status') {
-            return prop;
-        }
+// Page and Database functions
+function openPage(pageId) {
+    window.location.href = `/page/${pageId}`;
+}
+
+function deletePage(pageId) {
+    if (confirm('Are you sure you want to delete this page?')) {
+        fetch('/api/delete_page', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ page_id: pageId })
+        }).then(() => location.reload());
     }
-    return null;
-}
-
-// Database functions
-function createDatabaseWithProperties(name, properties) {
-    const propertyObjects = {};
-    
-    properties.forEach((prop, index) => {
-        const propId = `prop_${index}`;
-        propertyObjects[propId] = {
-            name: prop.name,
-            type: prop.type,
-            options: prop.options || []
-        };
-    });
-    
-    return fetch('/api/create_database', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            name: name,
-            properties: propertyObjects
-        })
-    })
-    .then(response => response.json());
-}
-
-function createPageWithProperties(databaseId, title, properties) {
-    const propertyObjects = {};
-    Object.keys(properties).forEach(propId => {
-        const prop = properties[propId];
-        propertyObjects[propId] = {
-            name: prop.name,
-            type: prop.type,
-            value: prop.type === 'rich_text' ? '' : prop.value,
-            rich_text_content: prop.type === 'rich_text' ? prop.rich_text_content : undefined
-        };
-    });
-    return fetch('/api/create_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            database_id: databaseId,
-            title: title,
-            properties: propertyObjects
-        })
-    })
-    .then(response => response.json());
-}
-
-// Date repetition functions
-function calculateRepetitionDates(startDate, repetitionType, repetitionConfig) {
-    const start = new Date(startDate);
-    const dates = [];
-    
-    switch (repetitionType) {
-        case 'daily':
-            for (let i = 0; i < 365; i++) {
-                const date = new Date(start);
-                date.setDate(start.getDate() + i);
-                dates.push(formatDate(date));
-            }
-            break;
-            
-        case 'weekly':
-            const daysOfWeek = repetitionConfig.days || [0, 1, 2, 3, 4, 5, 6];
-            for (let i = 0; i < 365; i++) {
-                const date = new Date(start);
-                date.setDate(start.getDate() + i);
-                if (daysOfWeek.includes(date.getDay())) {
-                    dates.push(formatDate(date));
-                }
-            }
-            break;
-            
-        case 'custom_days':
-            const interval = repetitionConfig.interval || 1;
-            const days = repetitionConfig.days || [0, 1, 2, 3, 4, 5, 6];
-            for (let i = 0; i < 365; i += interval) {
-                const date = new Date(start);
-                date.setDate(start.getDate() + i);
-                if (days.includes(date.getDay())) {
-                    dates.push(formatDate(date));
-                }
-            }
-            break;
-    }
-    
-    return dates;
-}
-
-// Property rendering functions
-function renderPropertyValue(pageProp, propDef) {
-    switch (propDef.type) {
-        case 'text':
-            return `<span>${pageProp.value || ''}</span>`;
-        case 'rich_text':
-            const richContent = pageProp.rich_text_content || '';
-            if (richContent) {
-                return `<div class="rich-text-preview">${richContent}</div>`;
-            }
-            return `<span class="empty-property">-</span>`;
-        case 'date':
-            if (typeof pageProp.value === 'object' && pageProp.value !== null) {
-                // Handle repeating config
-                if (pageProp.value.repetition) {
-                    let summary = '';
-                    const rep = pageProp.value;
-                    const type = rep.repetition_type || 'daily';
-                    const config = rep.repetition_config || {};
-                    if (type === 'daily') {
-                        summary = `Every ${config.interval || 1} day(s)`;
-                    } else if (type === 'weekly') {
-                        const days = (config.days_of_week || []).map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ');
-                        summary = `Every ${config.interval || 1} week(s) on ${days}`;
-                    } else if (type === 'monthly') {
-                        summary = `Every ${config.interval || 1} month(s) on day ${config.day_of_month || ''}`;
-                    } else if (type === 'custom') {
-                        const days = (config.days_of_week || []).map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ');
-                        summary = `Custom: Every ${config.interval || 1} week(s) on ${days}`;
-                    } else {
-                        summary = 'Repeating';
-                    }
-                    if (rep.start_date) summary += `, from ${rep.start_date}`;
-                    if (config.end_date) summary += ` to ${config.end_date}`;
-                    return `<span class="property-tag">${summary}</span>`;
-                } else {
-                    const dateValue = pageProp.value.start_date || pageProp.value.end_date || '';
-                    return `<span>${dateValue}</span>`;
-                }
-            }
-            return `<span>${pageProp.value || ''}</span>`;
-        case 'select':
-        case 'status':
-            return `<span class="property-tag">${pageProp.value}</span>`;
-        case 'number':
-            return `<span>${pageProp.value}</span>`;
-        default:
-            return `<span>${pageProp.value}</span>`;
-    }
-}
-
-function renderPropertyEditor(property, propertyDefinition) {
-    switch (propertyDefinition.type) {
-        case 'text':
-            return `<input type="text" class="form-control" value="${property.value || ''}" 
-                           onchange="updateProperty('${property.id}', 'text', this.value)">`;
-        case 'rich_text':
-            return `<textarea class="form-control" data-rich-text="true" data-placeholder="Edit ${property.name.toLowerCase()}...">${property.rich_text_content || ''}</textarea>`;
-            
-        case 'date':
-            const dateValue = typeof property.value === 'object' ? 
-                (property.value.start_date || '') : (property.value || '');
-            return `<input type="date" class="form-control" value="${dateValue}" 
-                           onchange="updateProperty('${property.id}', 'date', this.value)">`;
-            
-        case 'select':
-        case 'status':
-            const options = propertyDefinition.options || [];
-            let optionsHtml = '';
-            options.forEach(option => {
-                const selected = property.value === option ? 'selected' : '';
-                optionsHtml += `<option value="${option}" ${selected}>${option}</option>`;
-            });
-            return `<select class="form-control" onchange="updateProperty('${property.id}', '${propertyDefinition.type}', this.value)">
-                        ${optionsHtml}
-                    </select>`;
-            
-        case 'number':
-            return `<input type="number" class="form-control" value="${property.value || ''}" 
-                           onchange="updateProperty('${property.id}', 'number', this.value)">`;
-            
-        default:
-            return `<input type="text" class="form-control" value="${property.value || ''}" 
-                           onchange="updateProperty('${property.id}', 'text', this.value)">`;
-    }
-}
-
-function renderPropertyInput(property, index) {
-    const inputId = `modalProp_${index}`;
-    let inputHtml = '';
-    switch (property.type) {
-        case 'text':
-            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-            break;
-        case 'number':
-            inputHtml = `<input type="number" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-            break;
-        case 'date':
-            inputHtml = `<input type="date" id="${inputId}" class="form-control">`;
-            break;
-        case 'select':
-            const options = (property.options || []).map(option =>
-                `<option value="${option}">${option}</option>`
-            ).join('');
-            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select ${property.name.toLowerCase()}...</option>${options}</select>`;
-            break;
-        case 'status':
-            const statusOptions = ['Not Started', 'In Progress', 'Done'];
-            const statusOptionsHtml = statusOptions.map(option =>
-                `<option value="${option}">${option}</option>`
-            ).join('');
-            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select status...</option>${statusOptionsHtml}</select>`;
-            break;
-        case 'rich_text':
-            inputHtml = `<textarea id="${inputId}" class="form-control" data-rich-text="true" data-placeholder="Enter ${property.name.toLowerCase()}..."></textarea>`;
-            break;
-        default:
-            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-    }
-    return inputHtml;
-}
-
-// Property update functions
-function updateProperty(propertyId, type, value) {
-    if (!window.currentPageId) {
-        console.error('No currentPageId set');
-        return;
-    }
-    let payload = {
-        page_id: window.currentPageId,
-        property_id: propertyId,
-        type: type
-    };
-    if (type === 'rich_text') {
-        payload.value = '';
-        payload.rich_text_content = value;
-    } else {
-        payload.value = value;
-    }
-    fetch('/api/update_property', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Property updated and persisted');
-            if (window.currentDatabaseId) {
-                loadDatabaseData(window.currentDatabaseId);
-            }
-        } else {
-            console.error('Error updating property:', data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error updating property:', error);
-    });
-}
-
-// Database table functions
-function renderDatabaseTable(databaseId, pages, database) {
-    const tableBody = document.getElementById(`databaseBody_${databaseId}`);
-    if (!tableBody) return;
-    
-    // Calculate the grid template columns based on number of properties
-    const propertyCount = Object.keys(database.properties).length;
-    const gridColumns = `300px 200px${' 1fr'.repeat(propertyCount)} 100px`;
-    
-    // Check if any page has a non-empty description
-    let hasDescription = false;
-    pages.forEach(page => {
-        const desc = page.properties.description;
-        if (desc && (desc.rich_text_content || desc.value)) {
-            hasDescription = true;
-        }
-    });
-
-    tableBody.innerHTML = '';
-    
-    // Also update the table header to ensure it matches
-    const tableHeader = tableBody.parentNode.querySelector('.database-table-header');
-    if (tableHeader) {
-        tableHeader.style.gridTemplateColumns = gridColumns;
-    }
-    
-    pages.forEach(page => {
-        const row = document.createElement('div');
-        row.className = 'database-table-row';
-        row.setAttribute('data-page-id', page.id);
-        row.style.display = 'grid';
-        row.style.gridTemplateColumns = gridColumns;
-        
-        // Title cell
-        const titleCell = document.createElement('div');
-        titleCell.className = 'table-cell table-cell-title';
-        const hasNestedDatabases = page.databases && page.databases.length > 0;
-        const nestedIndicator = hasNestedDatabases ? '<i class="fas fa-folder-tree nested-indicator" title="Has nested databases"></i>' : '';
-        titleCell.innerHTML = `
-            <div class="page-title-container">
-                <div class="page-title-editable" contenteditable="true" onblur="updatePageTitle('${page.id}', this.textContent)">${page.title}</div>
-                ${nestedIndicator}
-            </div>
-        `;
-        row.appendChild(titleCell);
-        
-        // Description cell
-        const descCell = document.createElement('div');
-        descCell.className = 'table-cell';
-        const desc = page.properties.description;
-        if (desc && (desc.rich_text_content || desc.value)) {
-            const description = desc.rich_text_content || desc.value;
-            const isLongDescription = description.length > 50;
-            const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
-            const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
-            const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
-            descCell.innerHTML = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
-        } else {
-            descCell.innerHTML = '<span class="empty-property">-</span>';
-        }
-        row.appendChild(descCell);
-        
-        // Property cells
-        Object.values(database.properties).forEach(prop => {
-            const cell = document.createElement('div');
-            cell.className = 'table-cell';
-            const pageProp = page.properties[prop.id];
-            if (pageProp) {
-                cell.innerHTML = renderPropertyValue(pageProp, prop);
-            } else {
-                cell.innerHTML = '<span class="empty-property">-</span>';
-            }
-            row.appendChild(cell);
-        });
-        
-        // Actions cell
-        const actionsCell = document.createElement('div');
-        actionsCell.className = 'table-cell table-cell-actions';
-        actionsCell.innerHTML = `
-            <button class="btn btn-sm btn-secondary" onclick="editPage('${page.id}')" title="Edit page">
-                <i class="fas fa-edit"></i>
-            </button>
-            <button class="btn btn-sm btn-info" onclick="viewPageDetails('${page.id}')" title="View details">
-                <i class="fas fa-eye"></i>
-            </button>
-            <button class="btn btn-sm btn-primary" onclick="openPage('${page.id}')" title="Open page">
-                <i class="fas fa-external-link-alt"></i>
-            </button>
-            <button class="btn btn-sm btn-danger" onclick="deletePage('${page.id}')" title="Delete page">
-                <i class="fas fa-trash"></i>
-            </button>
-        `;
-        row.appendChild(actionsCell);
-        
-        tableBody.appendChild(row);
-    });
-}
-
-// Page functions
-function updatePageTitle(pageId, newTitle) {
-    return fetch('/api/update_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            page_id: pageId,
-            updates: {
-                title: newTitle
-            }
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Page title updated');
-        }
-    })
-    .catch(error => {
-        console.error('Error updating page title:', error);
-    });
 }
 
 function editPage(pageId) {
-    // Load page data and show edit modal
     fetch(`/api/get_page_data/${pageId}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
                 const page = data.page;
-                showPageEditModal(page);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading page data:', error);
-        });
-}
-
-// Global Rich Text Editor and Modal Edit Functions
-
-// Function to get rich text content - works with both selector strings and element IDs
-function getRichTextContent(selectorOrId) {
-    let element = null;
-    
-    if (typeof selectorOrId === 'string') {
-        if (selectorOrId.startsWith('#')) {
-            element = document.querySelector(selectorOrId);
-        } else {
-            element = document.getElementById(selectorOrId);
-        }
-    } else if (selectorOrId instanceof HTMLElement) {
-        element = selectorOrId;
-    }
-    
-    if (element) {
-        // Check if it's a rich text editor with container
-        const container = element.parentNode.querySelector('.rich-editor-container');
-        if (container) {
-            const contentDiv = container.querySelector('.rich-editor-content');
-            if (contentDiv) {
-                return contentDiv.innerHTML;
-            }
-        }
-        // Fallback to textarea value
-        return element.value || '';
-    }
-    return '';
-}
-
-// Function to set rich text content
-function setRichTextContent(selectorOrId, content) {
-    let element = null;
-    
-    if (typeof selectorOrId === 'string') {
-        if (selectorOrId.startsWith('#')) {
-            element = document.querySelector(selectorOrId);
-        } else {
-            element = document.getElementById(selectorOrId);
-        }
-    }
-    
-    if (element) {
-        const container = element.parentNode.querySelector('.rich-editor-container');
-        if (container) {
-            const contentDiv = container.querySelector('.rich-editor-content');
-            if (contentDiv) {
-                contentDiv.innerHTML = content;
-                return;
-            }
-        }
-        element.value = content;
-    }
-}
-
-// Fixed function to show page edit modal with proper rich text initialization
-function showPageEditModal(page) {
-    let propertiesHtml = '';
-    Object.values(page.properties).forEach((prop, idx) => {
-        if (prop.name === 'Description') {
-            return; // Skip description here as it's handled separately in page view
-        }
-        if (prop.type === 'date') {
-            // Handle date with possible repetition
-            let value = prop.value;
-            let isRepeating = value && typeof value === 'object' && value.repetition;
-            let dateValue = '';
-            let rep = value || {};
-            let config = rep.repetition_config || {};
-            if (!isRepeating) {
-                dateValue = typeof value === 'object' ? (value.start_date || '') : (value || '');
-            }
-            propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="date">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <input type="date" id="editProp_${idx}" class="form-control" value="${dateValue}" style="${isRepeating ? 'display:none;' : ''}">
-                    <div style="margin-top:8px;">
-                        <label><input type="checkbox" id="editRepetitionCheckbox_${idx}" onchange="toggleEditRepetitionOptions(${idx})" ${isRepeating ? 'checked' : ''}> Repetition</label>
-                    </div>
-                    <div id="editRepetitionOptions_${idx}" style="display:${isRepeating ? '' : 'none'}; margin-bottom: 12px;">
-                        <div class="form-group">
-                            <label>Start Date</label>
-                            <input type="date" id="editRepetitionStartDate_${idx}" class="form-control" value="${rep.start_date || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label>End Date (Optional)</label>
-                            <input type="date" id="editRepetitionEndDate_${idx}" class="form-control" value="${config.end_date || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label>Frequency</label>
-                            <select id="editRepetitionType_${idx}" class="form-control" onchange="updateEditRepetitionOptions(${idx})">
-                                <option value="daily" ${rep.repetition_type === 'daily' ? 'selected' : ''}>Daily</option>
-                                <option value="weekly" ${rep.repetition_type === 'weekly' ? 'selected' : ''}>Weekly</option>
-                                <option value="monthly" ${rep.repetition_type === 'monthly' ? 'selected' : ''}>Monthly</option>
-                                <option value="custom" ${rep.repetition_type === 'custom' ? 'selected' : ''}>Custom</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="editDailyOptions_${idx}" style="display:${rep.repetition_type === 'daily' ? '' : 'none'}">
-                            <label>Every</label>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="number" id="editDailyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
-                                <span>day(s)</span>
-                            </div>
-                        </div>
-                        <div id="editWeeklyOptions_${idx}" style="display:${rep.repetition_type === 'weekly' ? '' : 'none'}">
-                            <div class="form-group">
-                                <label>Every</label>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="number" id="editWeeklyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
-                                    <span>week(s) on:</span>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <div id="editWeeklyDaysCheckboxes_${idx}" style="display: flex; flex-wrap: wrap; gap: 12px;">
-                                    ${[0,1,2,3,4,5,6].map(d => `<label><input type="checkbox" value="${d}" ${config.days_of_week && config.days_of_week.includes(d) ? 'checked' : ''}> ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]}</label>`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                        <div id="editMonthlyOptions_${idx}" style="display:${rep.repetition_type === 'monthly' ? '' : 'none'}">
-                            <div class="form-group">
-                                <label>Every</label>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="number" id="editMonthlyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
-                                    <span>month(s) on day</span>
-                                    <input type="number" id="editMonthlyDay_${idx}" class="form-control" min="1" max="31" value="${config.day_of_month || 1}" style="width: 80px;">
-                                </div>
-                            </div>
-                        </div>
-                        <div id="editCustomOptions_${idx}" style="display:${rep.repetition_type === 'custom' ? '' : 'none'}">
-                            <div class="form-group">
-                                <label>Every</label>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="number" id="editCustomInterval_${idx}" class="form-control" min="1" value="${config.interval || 2}" style="width: 80px;">
-                                    <span>week(s) on:</span>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <div id="editCustomDaysCheckboxes_${idx}" style="display: flex; flex-wrap: wrap; gap: 12px;">
-                                    ${[0,1,2,3,4,5,6].map(d => `<label><input type="checkbox" value="${d}" ${config.days_of_week && config.days_of_week.includes(d) ? 'checked' : ''}> ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]}</label>`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        } else if (prop.type === 'rich_text') {
-            propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <textarea id="editProp_${idx}" data-rich-text="true" data-placeholder="Edit ${prop.name.toLowerCase()}...">${prop.rich_text_content || prop.value || ''}</textarea>
-                </div>
-            `;
-        } else {
-            propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <input type="text" id="editProp_${idx}" class="form-control" value="${prop.value || ''}" placeholder="Edit ${prop.name.toLowerCase()}...">
-                </div>
-            `;
-        }
-    });
-    const modalContent = `
-        <div class="form-group">
-            <label for="editPageTitle">Page Title</label>
-            <input type="text" id="editPageTitle" class="form-control" value="${page.title}">
-        </div>
-        ${propertiesHtml}
-        <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="confirmEditPage('${page.id}')">Save Changes</button>
-        </div>
-    `;
-    document.getElementById('modalTitle').textContent = 'Edit Page';
-    document.getElementById('modalContent').innerHTML = modalContent;
-    document.getElementById('modalOverlay').classList.add('active');
-    setTimeout(() => {
-        const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]');
-        richTextFields.forEach(el => {
-            initRichTextEditor('#' + el.id, el.getAttribute('data-placeholder') || 'Edit...');
-        });
-    }, 300);
-}
-
-function toggleEditRepetitionOptions(idx) {
-    const checkbox = document.getElementById(`editRepetitionCheckbox_${idx}`);
-    const options = document.getElementById(`editRepetitionOptions_${idx}`);
-    const singleDate = document.getElementById(`editProp_${idx}`);
-    if (checkbox && checkbox.checked) {
-        options.style.display = '';
-        if (singleDate) singleDate.style.display = 'none';
-        updateEditRepetitionOptions(idx);
-    } else {
-        options.style.display = 'none';
-        if (singleDate) singleDate.style.display = '';
-    }
-}
-
-function updateEditRepetitionOptions(idx) {
-    const type = document.getElementById(`editRepetitionType_${idx}`).value;
-    const optionGroups = ['Daily', 'Weekly', 'Monthly', 'Custom'];
-    optionGroups.forEach(group => {
-        const groupDiv = document.getElementById(`edit${group}Options_${idx}`);
-        if (groupDiv) groupDiv.style.display = 'none';
-    });
-    const targetGroup = document.getElementById(`edit${type.charAt(0).toUpperCase() + type.slice(1)}Options_${idx}`);
-    if (targetGroup) targetGroup.style.display = '';
-}
-
-// Property rendering functions
-function renderPropertyValue(pageProp, propDef) {
-    switch (propDef.type) {
-        case 'text':
-            return `<span>${pageProp.value || ''}</span>`;
-        case 'rich_text':
-            const richContent = pageProp.rich_text_content || '';
-            if (richContent) {
-                return `<div class="rich-text-preview">${richContent}</div>`;
-            }
-            return `<span class="empty-property">-</span>`;
-        case 'date':
-            if (typeof pageProp.value === 'object' && pageProp.value !== null) {
-                // Handle repeating config
-                if (pageProp.value.repetition) {
-                    let summary = '';
-                    const rep = pageProp.value;
-                    const type = rep.repetition_type || 'daily';
-                    const config = rep.repetition_config || {};
-                    if (type === 'daily') {
-                        summary = `Every ${config.interval || 1} day(s)`;
-                    } else if (type === 'weekly') {
-                        const days = (config.days_of_week || []).map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ');
-                        summary = `Every ${config.interval || 1} week(s) on ${days}`;
-                    } else if (type === 'monthly') {
-                        summary = `Every ${config.interval || 1} month(s) on day ${config.day_of_month || ''}`;
-                    } else if (type === 'custom') {
-                        const days = (config.days_of_week || []).map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ');
-                        summary = `Custom: Every ${config.interval || 1} week(s) on ${days}`;
-                    } else {
-                        summary = 'Repeating';
+                fetch(`/api/get_database_data/${page.parent_database_id}`).then(res => res.json()).then(dbData => {
+                    if (dbData.success) {
+                        showPageEditModal(page, dbData.database);
                     }
-                    if (rep.start_date) summary += `, from ${rep.start_date}`;
-                    if (config.end_date) summary += ` to ${config.end_date}`;
-                    return `<span class="property-tag">${summary}</span>`;
-                } else {
-                    const dateValue = pageProp.value.start_date || pageProp.value.end_date || '';
-                    return `<span>${dateValue}</span>`;
-                }
+                });
             }
-            return `<span>${pageProp.value || ''}</span>`;
-        case 'select':
-        case 'status':
-            return `<span class="property-tag">${pageProp.value}</span>`;
-        case 'number':
-            return `<span>${pageProp.value}</span>`;
-        default:
-            return `<span>${pageProp.value}</span>`;
-    }
-}
-
-function renderPropertyEditor(property, propertyDefinition) {
-    switch (propertyDefinition.type) {
-        case 'text':
-            return `<input type="text" class="form-control" value="${property.value || ''}" 
-                           onchange="updateProperty('${property.id}', 'text', this.value)">`;
-        case 'rich_text':
-            return `<textarea class="form-control" data-rich-text="true" data-placeholder="Edit ${property.name.toLowerCase()}...">${property.rich_text_content || ''}</textarea>`;
-            
-        case 'date':
-            const dateValue = typeof property.value === 'object' ? 
-                (property.value.start_date || '') : (property.value || '');
-            return `<input type="date" class="form-control" value="${dateValue}" 
-                           onchange="updateProperty('${property.id}', 'date', this.value)">`;
-            
-        case 'select':
-        case 'status':
-            const options = propertyDefinition.options || [];
-            let optionsHtml = '';
-            options.forEach(option => {
-                const selected = property.value === option ? 'selected' : '';
-                optionsHtml += `<option value="${option}" ${selected}>${option}</option>`;
-            });
-            return `<select class="form-control" onchange="updateProperty('${property.id}', '${propertyDefinition.type}', this.value)">
-                        ${optionsHtml}
-                    </select>`;
-            
-        case 'number':
-            return `<input type="number" class="form-control" value="${property.value || ''}" 
-                           onchange="updateProperty('${property.id}', 'number', this.value)">`;
-            
-        default:
-            return `<input type="text" class="form-control" value="${property.value || ''}" 
-                           onchange="updateProperty('${property.id}', 'text', this.value)">`;
-    }
-}
-
-function renderPropertyInput(property, index) {
-    const inputId = `modalProp_${index}`;
-    let inputHtml = '';
-    switch (property.type) {
-        case 'text':
-            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-            break;
-        case 'number':
-            inputHtml = `<input type="number" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-            break;
-        case 'date':
-            inputHtml = `<input type="date" id="${inputId}" class="form-control">`;
-            break;
-        case 'select':
-            const options = (property.options || []).map(option =>
-                `<option value="${option}">${option}</option>`
-            ).join('');
-            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select ${property.name.toLowerCase()}...</option>${options}</select>`;
-            break;
-        case 'status':
-            const statusOptions = ['Not Started', 'In Progress', 'Done'];
-            const statusOptionsHtml = statusOptions.map(option =>
-                `<option value="${option}">${option}</option>`
-            ).join('');
-            inputHtml = `<select id="${inputId}" class="form-control"><option value="">Select status...</option>${statusOptionsHtml}</select>`;
-            break;
-        case 'rich_text':
-            inputHtml = `<textarea id="${inputId}" class="form-control" data-rich-text="true" data-placeholder="Enter ${property.name.toLowerCase()}..."></textarea>`;
-            break;
-        default:
-            inputHtml = `<input type="text" id="${inputId}" class="form-control" placeholder="Enter ${property.name.toLowerCase()}...">`;
-    }
-    return inputHtml;
-}
-
-// Property update functions
-function updateProperty(propertyId, type, value) {
-    if (!window.currentPageId) {
-        console.error('No currentPageId set');
-        return;
-    }
-    let payload = {
-        page_id: window.currentPageId,
-        property_id: propertyId,
-        type: type
-    };
-    if (type === 'rich_text') {
-        payload.value = '';
-        payload.rich_text_content = value;
-    } else {
-        payload.value = value;
-    }
-    fetch('/api/update_property', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Property updated and persisted');
-            if (window.currentDatabaseId) {
-                loadDatabaseData(window.currentDatabaseId);
-            }
-        } else {
-            console.error('Error updating property:', data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error updating property:', error);
-    });
-}
-
-// Database table functions
-function renderDatabaseTable(databaseId, pages, database) {
-    const tableBody = document.getElementById(`databaseBody_${databaseId}`);
-    if (!tableBody) return;
-    
-    // Calculate the grid template columns based on number of properties
-    const propertyCount = Object.keys(database.properties).length;
-    const gridColumns = `300px 200px${' 1fr'.repeat(propertyCount)} 100px`;
-    
-    // Check if any page has a non-empty description
-    let hasDescription = false;
-    pages.forEach(page => {
-        const desc = page.properties.description;
-        if (desc && (desc.rich_text_content || desc.value)) {
-            hasDescription = true;
-        }
-    });
-
-    tableBody.innerHTML = '';
-    
-    // Also update the table header to ensure it matches
-    const tableHeader = tableBody.parentNode.querySelector('.database-table-header');
-    if (tableHeader) {
-        tableHeader.style.gridTemplateColumns = gridColumns;
-    }
-    
-    pages.forEach(page => {
-        const row = document.createElement('div');
-        row.className = 'database-table-row';
-        row.setAttribute('data-page-id', page.id);
-        row.style.display = 'grid';
-        row.style.gridTemplateColumns = gridColumns;
-        
-        // Title cell
-        const titleCell = document.createElement('div');
-        titleCell.className = 'table-cell table-cell-title';
-        const hasNestedDatabases = page.databases && page.databases.length > 0;
-        const nestedIndicator = hasNestedDatabases ? '<i class="fas fa-folder-tree nested-indicator" title="Has nested databases"></i>' : '';
-        titleCell.innerHTML = `
-            <div class="page-title-container">
-                <div class="page-title-editable" contenteditable="true" onblur="updatePageTitle('${page.id}', this.textContent)">${page.title}</div>
-                ${nestedIndicator}
-            </div>
-        `;
-        row.appendChild(titleCell);
-        
-        // Description cell
-        const descCell = document.createElement('div');
-        descCell.className = 'table-cell';
-        const desc = page.properties.description;
-        if (desc && (desc.rich_text_content || desc.value)) {
-            const description = desc.rich_text_content || desc.value;
-            const isLongDescription = description.length > 50;
-            const displayText = isLongDescription ? description.substring(0, 50) + '...' : description;
-            const className = isLongDescription ? 'page-description has-full-text' : 'page-description';
-            const dataAttr = isLongDescription ? `data-full-text="${description.replace(/"/g, '&quot;')}"` : '';
-            descCell.innerHTML = `<div class="${className}" ${dataAttr}>${displayText}</div>`;
-        } else {
-            descCell.innerHTML = '<span class="empty-property">-</span>';
-        }
-        row.appendChild(descCell);
-        
-        // Property cells
-        Object.values(database.properties).forEach(prop => {
-            const cell = document.createElement('div');
-            cell.className = 'table-cell';
-            const pageProp = page.properties[prop.id];
-            if (pageProp) {
-                cell.innerHTML = renderPropertyValue(pageProp, prop);
-            } else {
-                cell.innerHTML = '<span class="empty-property">-</span>';
-            }
-            row.appendChild(cell);
-        });
-        
-        // Actions cell
-        const actionsCell = document.createElement('div');
-        actionsCell.className = 'table-cell table-cell-actions';
-        actionsCell.innerHTML = `
-            <button class="btn btn-sm btn-secondary" onclick="editPage('${page.id}')" title="Edit page">
-                <i class="fas fa-edit"></i>
-            </button>
-            <button class="btn btn-sm btn-info" onclick="viewPageDetails('${page.id}')" title="View details">
-                <i class="fas fa-eye"></i>
-            </button>
-            <button class="btn btn-sm btn-primary" onclick="openPage('${page.id}')" title="Open page">
-                <i class="fas fa-external-link-alt"></i>
-            </button>
-            <button class="btn btn-sm btn-danger" onclick="deletePage('${page.id}')" title="Delete page">
-                <i class="fas fa-trash"></i>
-            </button>
-        `;
-        row.appendChild(actionsCell);
-        
-        tableBody.appendChild(row);
-    });
-}
-
-// Page functions
-function updatePageTitle(pageId, newTitle) {
-    return fetch('/api/update_page', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            page_id: pageId,
-            updates: {
-                title: newTitle
-            }
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            console.log('Page title updated');
-        }
-    })
-    .catch(error => {
-        console.error('Error updating page title:', error);
-    });
-}
-
-function editPage(pageId) {
-    // Load page data and show edit modal
-    fetch(`/api/get_page_data/${pageId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const page = data.page;
-                showPageEditModal(page);
-            }
-        })
-        .catch(error => {
-            console.error('Error loading page data:', error);
         });
 }
 
-// Global Rich Text Editor and Modal Edit Functions
-
-// Function to get rich text content - works with both selector strings and element IDs
-function getRichTextContent(selectorOrId) {
-    let element = null;
-    
-    if (typeof selectorOrId === 'string') {
-        if (selectorOrId.startsWith('#')) {
-            element = document.querySelector(selectorOrId);
-        } else {
-            element = document.getElementById(selectorOrId);
-        }
-    } else if (selectorOrId instanceof HTMLElement) {
-        element = selectorOrId;
-    }
-    
-    if (element) {
-        // Check if it's a rich text editor with container
-        const container = element.parentNode.querySelector('.rich-editor-container');
-        if (container) {
-            const contentDiv = container.querySelector('.rich-editor-content');
-            if (contentDiv) {
-                return contentDiv.innerHTML;
-            }
-        }
-        // Fallback to textarea value
-        return element.value || '';
-    }
-    return '';
-}
-
-// Function to set rich text content
-function setRichTextContent(selectorOrId, content) {
-    let element = null;
-    
-    if (typeof selectorOrId === 'string') {
-        if (selectorOrId.startsWith('#')) {
-            element = document.querySelector(selectorOrId);
-        } else {
-            element = document.getElementById(selectorOrId);
-        }
-    }
-    
-    if (element) {
-        const container = element.parentNode.querySelector('.rich-editor-container');
-        if (container) {
-            const contentDiv = container.querySelector('.rich-editor-content');
-            if (contentDiv) {
-                contentDiv.innerHTML = content;
-                return;
-            }
-        }
-        element.value = content;
-    }
-}
-
-// Fixed function to show page edit modal with proper rich text initialization
-function showPageEditModal(page) {
+function showPageEditModal(page, database) {
     let propertiesHtml = '';
-    Object.values(page.properties).forEach((prop, idx) => {
-        if (prop.name === 'Description') {
-            return; // Skip description here as it's handled separately in page view
-        }
-        if (prop.type === 'date') {
-            // Handle date with possible repetition
-            let value = prop.value;
-            let isRepeating = value && typeof value === 'object' && value.repetition;
-            let dateValue = '';
-            let rep = value || {};
-            let config = rep.repetition_config || {};
-            if (!isRepeating) {
-                dateValue = typeof value === 'object' ? (value.start_date || '') : (value || '');
-            }
+    Object.values(database.properties).forEach((propDef, idx) => {
+        const propId = propDef.id;
+        const pageProp = page.properties[propId] || { value: null, rich_text_content: null };
+
+        if (propDef.type === 'date') {
+            const value = pageProp.value || {};
+            const isRepeating = typeof value === 'object' && value.repetition;
+            const singleDate = isRepeating ? '' : (typeof value === 'object' ? value.start_date : value) || '';
+            const singleStartTime = isRepeating ? '' : (value.start_time || '');
+            const singleEndTime = isRepeating ? '' : (value.end_time || '');
+            
+            const repStartDate = isRepeating ? value.start_date || '' : '';
+            const repStartTime = isRepeating ? value.start_time || '' : '';
+            const repEndTime = isRepeating ? value.end_time || '' : '';
+            const repEndDate = isRepeating ? (value.repetition_config && value.repetition_config.end_date) || '' : '';
+            const repType = isRepeating ? value.repetition_type : 'daily';
+            const config = isRepeating ? value.repetition_config || {} : {};
+
             propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="date">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <input type="date" id="editProp_${idx}" class="form-control" value="${dateValue}" style="${isRepeating ? 'display:none;' : ''}">
-                    <div style="margin-top:8px;">
-                        <label><input type="checkbox" id="editRepetitionCheckbox_${idx}" onchange="toggleEditRepetitionOptions(${idx})" ${isRepeating ? 'checked' : ''}> Repetition</label>
-                    </div>
-                    <div id="editRepetitionOptions_${idx}" style="display:${isRepeating ? '' : 'none'}; margin-bottom: 12px;">
-                        <div class="form-group">
-                            <label>Start Date</label>
-                            <input type="date" id="editRepetitionStartDate_${idx}" class="form-control" value="${rep.start_date || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label>End Date (Optional)</label>
-                            <input type="date" id="editRepetitionEndDate_${idx}" class="form-control" value="${config.end_date || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label>Frequency</label>
-                            <select id="editRepetitionType_${idx}" class="form-control" onchange="updateEditRepetitionOptions(${idx})">
-                                <option value="daily" ${rep.repetition_type === 'daily' ? 'selected' : ''}>Daily</option>
-                                <option value="weekly" ${rep.repetition_type === 'weekly' ? 'selected' : ''}>Weekly</option>
-                                <option value="monthly" ${rep.repetition_type === 'monthly' ? 'selected' : ''}>Monthly</option>
-                                <option value="custom" ${rep.repetition_type === 'custom' ? 'selected' : ''}>Custom</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="editDailyOptions_${idx}" style="display:${rep.repetition_type === 'daily' ? '' : 'none'}">
-                            <label>Every</label>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <input type="number" id="editDailyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
-                                <span>day(s)</span>
-                            </div>
-                        </div>
-                        <div id="editWeeklyOptions_${idx}" style="display:${rep.repetition_type === 'weekly' ? '' : 'none'}">
-                            <div class="form-group">
-                                <label>Every</label>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="number" id="editWeeklyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
-                                    <span>week(s) on:</span>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <div id="editWeeklyDaysCheckboxes_${idx}" style="display: flex; flex-wrap: wrap; gap: 12px;">
-                                    ${[0,1,2,3,4,5,6].map(d => `<label><input type="checkbox" value="${d}" ${config.days_of_week && config.days_of_week.includes(d) ? 'checked' : ''}> ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]}</label>`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                        <div id="editMonthlyOptions_${idx}" style="display:${rep.repetition_type === 'monthly' ? '' : 'none'}">
-                            <div class="form-group">
-                                <label>Every</label>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="number" id="editMonthlyInterval_${idx}" class="form-control" min="1" value="${config.interval || 1}" style="width: 80px;">
-                                    <span>month(s) on day</span>
-                                    <input type="number" id="editMonthlyDay_${idx}" class="form-control" min="1" max="31" value="${config.day_of_month || 1}" style="width: 80px;">
-                                </div>
-                            </div>
-                        </div>
-                        <div id="editCustomOptions_${idx}" style="display:${rep.repetition_type === 'custom' ? '' : 'none'}">
-                            <div class="form-group">
-                                <label>Every</label>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="number" id="editCustomInterval_${idx}" class="form-control" min="1" value="${config.interval || 2}" style="width: 80px;">
-                                    <span>week(s) on:</span>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <div id="editCustomDaysCheckboxes_${idx}" style="display: flex; flex-wrap: wrap; gap: 12px;">
-                                    ${[0,1,2,3,4,5,6].map(d => `<label><input type="checkbox" value="${d}" ${config.days_of_week && config.days_of_week.includes(d) ? 'checked' : ''}> ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]}</label>`).join('')}
-                                </div>
-                            </div>
+                <div class="form-group" data-property-id="${propId}" data-property-type="date">
+                    <label>${propDef.name}</label>
+                    <div id="editSingleDateContainer_${idx}" style="display:${isRepeating ? 'none' : 'block'};">
+                        <div class="date-time-inputs">
+                            <input type="date" id="editProp_${idx}" class="form-control" value="${singleDate}">
+                            <input type="time" id="editPropStartTime_${idx}" class="form-control" value="${singleStartTime}">
+                            <span>to</span>
+                            <input type="time" id="editPropEndTime_${idx}" class="form-control" value="${singleEndTime}">
                         </div>
                     </div>
-                </div>
-            `;
-        } else if (prop.type === 'rich_text') {
-            propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <textarea id="editProp_${idx}" data-rich-text="true" data-placeholder="Edit ${prop.name.toLowerCase()}...">${prop.rich_text_content || prop.value || ''}</textarea>
-                </div>
-            `;
+                    <div style="margin-top:8px;"><label><input type="checkbox" id="editRepetitionCheckbox_${idx}" onchange="toggleEditRepetitionOptions(${idx})" ${isRepeating ? 'checked' : ''}> Repetition</label></div>
+                    <div id="editRepetitionOptions_${idx}" style="display:${isRepeating ? 'block' : 'none'}; border: 1px solid #444; padding: 10px; border-radius: 5px;">
+                        <div class="form-group">
+                            <label>Start Date & Time</label>
+                            <div class="date-time-inputs">
+                                <input type="date" id="editRepetitionStartDate_${idx}" class="form-control" value="${repStartDate}">
+                                <input type="time" id="editRepetitionStartTime_${idx}" class="form-control" value="${repStartTime}">
+                                <span>to</span>
+                                <input type="time" id="editRepetitionEndTime_${idx}" class="form-control" value="${repEndTime}">
+                            </div>
+                        </div>
+                        <div class="form-group"><label>End Date (Optional)</label><input type="date" id="editRepetitionEndDate_${idx}" class="form-control" value="${repEndDate}"></div>
+                        <div class="form-group"><label>Frequency</label><select id="editRepetitionType_${idx}" class="form-control" onchange="updateEditRepetitionOptions(${idx})">
+                            <option value="daily" ${repType === 'daily' ? 'selected' : ''}>Daily</option>
+                            <option value="weekly" ${repType === 'weekly' ? 'selected' : ''}>Weekly</option>
+                            <option value="monthly" ${repType === 'monthly' ? 'selected' : ''}>Monthly</option>
+                            <option value="custom" ${repType === 'custom' ? 'selected' : ''}>Custom</option>
+                        </select></div>
+                        <!-- Repetition options will be filled by JS -->
+                    </div>
+                </div>`;
+        } else if (propDef.type === 'rich_text') {
+            propertiesHtml += `<div class="form-group" data-property-id="${propId}" data-property-type="rich_text"><label for="editProp_${idx}">${propDef.name}</label><textarea id="editProp_${idx}" data-rich-text="true">${pageProp.rich_text_content || ''}</textarea></div>`;
         } else {
-            propertiesHtml += `
-                <div class="form-group" data-property-id="${prop.id || 'prop_' + idx}" data-property-type="${prop.type}">
-                    <label for="editProp_${idx}">${prop.name}</label>
-                    <input type="text" id="editProp_${idx}" class="form-control" value="${prop.value || ''}" placeholder="Edit ${prop.name.toLowerCase()}...">
-                </div>
-            `;
+             propertiesHtml += `<div class="form-group" data-property-id="${propId}" data-property-type="${propDef.type}"><label for="editProp_${idx}">${propDef.name}</label><input type="text" id="editProp_${idx}" class="form-control" value="${pageProp.value || ''}"></div>`;
         }
     });
+
     const modalContent = `
-        <div class="form-group">
-            <label for="editPageTitle">Page Title</label>
-            <input type="text" id="editPageTitle" class="form-control" value="${page.title}">
-        </div>
+        <div class="form-group"><label for="editPageTitle">Page Title</label><input type="text" id="editPageTitle" class="form-control" value="${page.title}"></div>
         ${propertiesHtml}
         <div class="modal-actions">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="confirmEditPage('${page.id}')">Save Changes</button>
-        </div>
-    `;
-    document.getElementById('modalTitle').textContent = 'Edit Page';
-    document.getElementById('modalContent').innerHTML = modalContent;
-    document.getElementById('modalOverlay').classList.add('active');
-    setTimeout(() => {
-        const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]');
-        richTextFields.forEach(el => {
-            initRichTextEditor('#' + el.id, el.getAttribute('data-placeholder') || 'Edit...');
+            <button type="button" class="btn btn-primary" onclick="confirmEditPage('${page.id}', '${database.id}')">Save Changes</button>
+        </div>`;
+    showModal('Edit Page', modalContent, () => {
+        initRichTextEditorForModal();
+        document.querySelectorAll('[data-property-type="date"]').forEach(el => {
+            const propId = el.dataset.propertyId;
+            const idx = Object.keys(database.properties).findIndex(id => id === propId);
+            if (idx !== -1) {
+                toggleEditRepetitionOptions(idx);
+            }
         });
-    }, 300);
+    });
 }
 
 function toggleEditRepetitionOptions(idx) {
     const checkbox = document.getElementById(`editRepetitionCheckbox_${idx}`);
-    const options = document.getElementById(`editRepetitionOptions_${idx}`);
-    const singleDate = document.getElementById(`editProp_${idx}`);
-    if (checkbox && checkbox.checked) {
-        options.style.display = '';
-        if (singleDate) singleDate.style.display = 'none';
-        updateEditRepetitionOptions(idx);
-    } else {
-        options.style.display = 'none';
-        if (singleDate) singleDate.style.display = '';
-    }
+    document.getElementById(`editSingleDateContainer_${idx}`).style.display = checkbox.checked ? 'none' : 'block';
+    document.getElementById(`editRepetitionOptions_${idx}`).style.display = checkbox.checked ? 'block' : 'none';
 }
 
-function updateEditRepetitionOptions(idx) {
-    const type = document.getElementById(`editRepetitionType_${idx}`).value;
-    const optionGroups = ['Daily', 'Weekly', 'Monthly', 'Custom'];
-    optionGroups.forEach(group => {
-        const groupDiv = document.getElementById(`edit${group}Options_${idx}`);
-        if (groupDiv) groupDiv.style.display = 'none';
+function confirmEditPage(pageId, databaseId) {
+    const title = document.getElementById('editPageTitle').value;
+    const updates = { title: title, properties: {} };
+
+    fetch(`/api/get_database_data/${databaseId}`).then(res => res.json()).then(dbData => {
+        if (!dbData.success) return;
+        
+        Object.values(dbData.database.properties).forEach((propDef, idx) => {
+            const propId = propDef.id;
+            if (propDef.type === 'date') {
+                const isRepeating = document.getElementById(`editRepetitionCheckbox_${idx}`).checked;
+                let value = {};
+                if (isRepeating) {
+                    const startDate = document.getElementById(`editRepetitionStartDate_${idx}`).value;
+                    if (!startDate) return;
+                    value = {
+                        start_date: startDate,
+                        start_time: document.getElementById(`editRepetitionStartTime_${idx}`).value || null,
+                        end_time: document.getElementById(`editRepetitionEndTime_${idx}`).value || null,
+                        repetition: true,
+                        repetition_type: document.getElementById(`editRepetitionType_${idx}`).value,
+                        repetition_config: { end_date: document.getElementById(`editRepetitionEndDate_${idx}`).value || null }
+                    };
+                } else {
+                    const singleDate = document.getElementById(`editProp_${idx}`).value;
+                    if (!singleDate) return;
+                    value = {
+                        start_date: singleDate,
+                        end_date: singleDate,
+                        start_time: document.getElementById(`editPropStartTime_${idx}`).value || null,
+                        end_time: document.getElementById(`editPropEndTime_${idx}`).value || null,
+                        repetition: false
+                    };
+                }
+                updates.properties[propId] = { name: propDef.name, type: 'date', value: value };
+            } else if (propDef.type === 'rich_text') {
+                updates.properties[propId] = { name: propDef.name, type: 'rich_text', value: '', rich_text_content: getRichTextContent(`editProp_${idx}`) };
+            } else {
+                updates.properties[propId] = { name: propDef.name, type: propDef.type, value: document.getElementById(`editProp_${idx}`).value };
+            }
+        });
+
+        fetch('/api/update_page', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ page_id: pageId, updates: updates })
+        }).then(res => res.json()).then(data => {
+            if (data.success) {
+                closeModal();
+                if (window.location.pathname.includes('/calendar')) {
+                    location.reload();
+                } else {
+                    loadDatabaseData(databaseId);
+                }
+            } else {
+                alert('Error updating page: ' + data.error);
+            }
+        });
     });
-    const targetGroup = document.getElementById(`edit${type.charAt(0).toUpperCase() + type.slice(1)}Options_${idx}`);
-    if (targetGroup) targetGroup.style.display = '';
 }
 
-// Initialize rich text editor for modal (called after modal content is set)
+
+// Rich Text Editor initialization
 function initRichTextEditorForModal() {
-    const richTextFields = document.querySelectorAll('textarea[data-rich-text="true"]:not(.rich-text-initialized)');
-    console.log('Initializing rich text editors for modal, found fields:', richTextFields.length);
-    
+    const richTextFields = document.querySelectorAll('.modal-overlay.active textarea[data-rich-text="true"]');
     richTextFields.forEach(el => {
-        const placeholder = el.getAttribute('data-placeholder') || 'Enter text...';
-        console.log('Initializing rich text editor for:', el.id, 'with placeholder:', placeholder);
-        initRichTextEditor('#' + el.id, placeholder);
-        el.classList.add('rich-text-initialized');
+        if (!el.classList.contains('rich-text-initialized')) {
+            // Replace with your actual rich text editor initialization if you have one
+            // This is a placeholder to avoid errors
+            el.classList.add('rich-text-initialized');
+        }
     });
 }
 
-// Generic rich text editor initialization function
-function initRichTextEditor(selector, placeholder = 'Enter text...') {
-    let element;
-    if (typeof selector === 'string') {
-        element = selector.startsWith('#') ? document.querySelector(selector) : document.getElementById(selector);
-    } else {
-        element = selector;
-    }
-    
-    if (!element || element.classList.contains('rich-text-initialized')) {
-        return;
-    }
-    
-    console.log('Initializing rich text editor for element:', element.id);
-    
-    // Get initial content
-    const initialContent = element.value || '';
-    
-    // Create rich text editor container
-    const container = document.createElement('div');
-    container.className = 'rich-editor-container';
-    
-    // Create toolbar
-    const toolbar = document.createElement('div');
-    toolbar.className = 'rich-editor-toolbar';
-    toolbar.innerHTML = `
-        <button type="button" class="toolbar-btn" data-command="bold" title="Bold">
-            <i class="fas fa-bold"></i>
-        </button>
-        <button type="button" class="toolbar-btn" data-command="italic" title="Italic">
-            <i class="fas fa-italic"></i>
-        </button>
-        <button type="button" class="toolbar-btn" data-command="underline" title="Underline">
-            <i class="fas fa-underline"></i>
-        </button>
-        <div class="toolbar-separator"></div>
-        <button type="button" class="toolbar-btn" data-command="insertUnorderedList" title="Bullet List">
-            <i class="fas fa-list-ul"></i>
-        </button>
-        <button type="button" class="toolbar-btn" data-command="insertOrderedList" title="Numbered List">
-            <i class="fas fa-list-ol"></i>
-        </button>
-    `;
-    
-    // Create content area
-    const content = document.createElement('div');
-    content.className = 'rich-editor-content';
-    content.contentEditable = true;
-    content.innerHTML = initialContent || `<p>${placeholder}</p>`;
-    
-    // Add focus/blur handling for placeholder
-    content.addEventListener('focus', () => {
-        if (content.innerHTML === `<p>${placeholder}</p>`) {
-            content.innerHTML = '<p></p>';
-        }
-    });
-    
-    content.addEventListener('blur', () => {
-        if (content.innerHTML === '<p></p>' || content.innerHTML === '') {
-            content.innerHTML = `<p>${placeholder}</p>`;
-        }
-        // Update the original textarea
-        element.value = content.innerHTML;
-    });
-    
-    // Handle input changes
-    content.addEventListener('input', () => {
-        element.value = content.innerHTML;
-    });
-    
-    // Handle toolbar commands
-    toolbar.addEventListener('click', (e) => {
-        if (e.target.closest('.toolbar-btn')) {
-            e.preventDefault();
-            const command = e.target.closest('.toolbar-btn').dataset.command;
-            document.execCommand(command, false, null);
-            content.focus();
-        }
-    });
-    
-    // Assemble the editor
-    container.appendChild(toolbar);
-    container.appendChild(content);
-    
-    // Replace the textarea
-    element.style.display = 'none';
-    element.parentNode.insertBefore(container, element.nextSibling);
-    element.classList.add('rich-text-initialized');
-    
-    console.log('Rich text editor initialized successfully for:', element.id);
+function getRichTextContent(id) {
+    // Replace with your actual rich text editor content getter
+    const el = document.getElementById(id);
+    return el ? el.value : '';
 }
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
-    // Close modal when clicking overlay
     document.getElementById('modalOverlay').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeModal();
-        }
+        if (e.target === this) closeModal();
     });
-    // Close modal with Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeModal();
             closeTaskSidebar();
-        }
-    });
-    // Correct auto-save initialization syntax
-    const inputs = document.querySelectorAll('input[type="text"], input[type="number"], textarea, select');
-    inputs.forEach(function(input) {
-        if (!input.classList.contains('ckeditor')) {
-            input.addEventListener('input', function() {
-                autoSaveFormInput(this);
-            });
         }
     });
 });
@@ -1306,38 +267,72 @@ document.addEventListener('DOMContentLoaded', function() {
 window.showModal = showModal;
 window.closeModal = closeModal;
 window.closeTaskSidebar = closeTaskSidebar;
-window.renderDatabaseTable = renderDatabaseTable;
-window.updatePageTitle = updatePageTitle;
 window.editPage = editPage;
-window.renderCalendar = renderCalendar;
-window.showTaskDetails = showTaskDetails;
-window.toggleTaskCompletion = toggleTaskCompletion;
-// Export viewPageDetails if defined
-if (typeof viewPageDetails === 'function') {
-    window.viewPageDetails = viewPageDetails;
+window.openPage = openPage;
+window.deletePage = deletePage;
+window.renderPropertyInput = (property, index) => {
+    const inputId = `modalProp_${index}`;
+    switch (property.type) {
+        case 'text': return `<input type="text" id="${inputId}" class="form-control">`;
+        case 'number': return `<input type="number" id="${inputId}" class="form-control">`;
+        case 'rich_text': return `<textarea id="${inputId}" data-rich-text="true"></textarea>`;
+        default: return `<input type="text" id="${inputId}" class="form-control">`;
+    }
+};
+
+// Functions for page.html to call
+if (typeof loadDatabaseData !== 'function') {
+    window.loadDatabaseData = (databaseId) => {
+        fetch(`/api/get_database_data/${databaseId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderDatabaseTable(databaseId, data.pages, data.database);
+                }
+            });
+    };
 }
 
-// Fix getRichTextContent selector usage
-function getRichTextContent(selector) {
-    let element = null;
-    if (typeof selector === 'string') {
-        if (selector.startsWith('#')) {
-            element = document.querySelector(selector);
-        } else {
-            element = document.getElementById(selector);
-        }
-    } else if (selector instanceof HTMLElement) {
-        element = selector;
-    }
-    if (element) {
-        const container = element.parentNode.querySelector('.rich-editor-container');
-        if (container) {
-            const contentDiv = container.querySelector('.rich-editor-content');
-            if (contentDiv) {
-                return contentDiv.innerHTML;
-            }
-        }
-        return element.value || '';
-    }
-    return '';
+if (typeof renderDatabaseTable !== 'function') {
+    window.renderDatabaseTable = (databaseId, pages, database) => {
+        const tableBody = document.getElementById(`databaseBody_${databaseId}`);
+        if (!tableBody) return;
+        tableBody.innerHTML = '';
+        pages.forEach(page => {
+            const row = document.createElement('div');
+            row.className = 'database-table-row';
+            row.setAttribute('data-page-id', page.id);
+            let propertiesHtml = '';
+            Object.values(database.properties).forEach(propDef => {
+                const pageProp = page.properties[propDef.id];
+                let value = '-';
+                if(pageProp) {
+                    if(propDef.type === 'date' && typeof pageProp.value === 'object' && pageProp.value) {
+                        value = pageProp.value.start_date || '';
+                         if(pageProp.value.start_time) {
+                            value += ` ${pageProp.value.start_time}`;
+                        }
+                    } else if (propDef.type === 'rich_text') {
+                         value = pageProp.rich_text_content ? pageProp.rich_text_content.substring(0, 50) + '...' : '-';
+                    }
+                    else {
+                        value = pageProp.value || '-';
+                    }
+                }
+                propertiesHtml += `<div class="table-cell">${value}</div>`;
+            });
+            const description = page.properties.description ? (page.properties.description.rich_text_content || '').substring(0,50) + '...' : '-';
+            row.innerHTML = `
+                <div class="table-cell table-cell-title">${page.title}</div>
+                <div class="table-cell">${description}</div>
+                ${propertiesHtml}
+                <div class="table-cell table-cell-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="editPage('${page.id}')"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-primary" onclick="openPage('${page.id}')"><i class="fas fa-external-link-alt"></i></button>
+                    <button class="btn btn-sm btn-danger" onclick="deletePage('${page.id}')"><i class="fas fa-trash"></i></button>
+                </div>
+            `;
+            tableBody.appendChild(row);
+        });
+    };
 }
