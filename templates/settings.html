@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Notion Alternative{% endblock %}
+
+{% block breadcrumb %}
+<span>Settings</span>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container" style="max-width: 600px; margin: 0 auto;">
+    <h1 style="margin-bottom: 24px;">App Settings</h1>
+    <table class="settings-table" style="width: 100%; border-collapse: collapse;">
+        <tbody>
+            {% for key, value in settings.items() %}
+            <tr style="border-bottom: 1px solid #333;">
+                <td style="padding: 12px 8px; font-weight: 600; color: #8b5cf6; width: 200px;">{{ key }}</td>
+                <td style="padding: 12px 8px; color: #e0e0e0;">{{ value }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

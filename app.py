@@ -9,9 +9,13 @@ import calendar
 from dataclasses import dataclass, asdict
 from copy import deepcopy
 import shutil
+from dotenv import load_dotenv  # NEW
+
+# Load environment variables from .env
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-here')
 
 # Data directory
 DATA_DIR = './data'
@@ -1271,6 +1275,16 @@ def api_delete_note_or_folder():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/settings')
+def settings_view():
+    settings = {
+        'Flask Secret Key': os.getenv('FLASK_SECRET_KEY', ''),
+        'Timezone': os.getenv('TIMEZONE', ''),
+        'App Public URL': os.getenv('APP_PUBLIC_URL', '')
+    }
+    data = load_data()
+    return render_template('settings.html', settings=settings, data=data)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
