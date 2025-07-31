@@ -112,15 +112,14 @@
 .calendar-event.completed { text-decoration: line-through; background: #444; border-left-color: #666; }
 
 /* Week/Day View */
-.time-grid-header { display: flex; border-bottom: 1px solid #333; background: #1e1e1e; }
-.time-col-gutter { width: 60px; flex-shrink: 0; }
-.day-header-cell { flex-grow: 1; text-align: center; padding: 8px 0; }
-.day-header-cell .day-name { font-size: 12px; color: #aaa; }
-.day-header-cell .day-date { font-size: 24px; font-weight: 500; }
-.day-header-cell.today .day-date { background: #4a9eff; color: white; border-radius: 50%; width: 36px; height: 36px; margin: 4px auto 0; display: flex; align-items: center; justify-content: center; }
-.all-day-strip { border-bottom: 1px solid #333; padding: 5px 0; display: flex; }
-.all-day-events-container { flex-grow: 1; display: flex; }
+.time-grid-header { display: flex; flex-direction: column; border-bottom: 1px solid #333; background: #1e1e1e; }
+.date-header-row { display: flex; border-bottom: 1px solid #333; }
+.date-header-row .time-col-gutter { width: 60px; flex-shrink: 0; }
+.date-header-row .day-header-cell { flex-grow: 1; text-align: center; padding: 8px 0; }
+.all-day-strip { display: flex; border-bottom: 1px solid #333; background: #181818; }
+.all-day-strip .time-col-gutter { width: 60px; flex-shrink: 0; }
 .all-day-day-col { flex-grow: 1; border-left: 1px solid #333; padding: 2px 5px; min-height: 28px; }
+.all-day-day-col:first-child { border-left: none; }
 
 .time-grid-scroll-container { flex-grow: 1; overflow-y: scroll; }
 .time-grid-container { display: flex; position: relative; }
@@ -320,41 +319,50 @@ function renderTimeGrid(numDays) {
     const timeCol = document.querySelector(`#${view} .time-col`);
     const body = document.querySelector(`#${view} .time-grid-body`);
     
-    headerContainer.innerHTML = '<div class="time-col-gutter"></div>';
+    headerContainer.innerHTML = '';
     timeCol.innerHTML = '';
     body.innerHTML = '';
-    
-    const allDayStrip = document.createElement('div');
-    allDayStrip.className = 'all-day-strip';
-    allDayStrip.innerHTML = `<div class="time-col-gutter"><span style="font-size:11px; color: #888; padding-left: 5px;">all-day</span></div><div class="all-day-events-container"></div>`;
-    headerContainer.appendChild(allDayStrip);
 
-    const start = new Date(currentDate);
-    if (numDays === 7) { // week view
-        start.setDate(start.getDate() - start.getDay());
-    }
-
+    // --- Render date headers row ---
+    const dateHeaderRow = document.createElement('div');
+    dateHeaderRow.className = 'date-header-row';
+    dateHeaderRow.style.display = 'flex';
+    dateHeaderRow.appendChild(Object.assign(document.createElement('div'), {className: 'time-col-gutter'}));
     for (let i = 0; i < numDays; i++) {
+        const start = new Date(currentDate);
+        if (numDays === 7) {
+            start.setDate(start.getDate() - start.getDay());
+        }
         const date = new Date(start);
         date.setDate(start.getDate() + i);
-        
         const headerCell = document.createElement('div');
         headerCell.className = 'day-header-cell';
         headerCell.innerHTML = `<div class="day-name">${date.toLocaleString('default', { weekday: 'short' })}</div><div class="day-date">${date.getDate()}</div>`;
         if (formatDate(date) === formatDate(new Date())) headerCell.classList.add('today');
-        headerContainer.insertBefore(headerCell, allDayStrip);
+        dateHeaderRow.appendChild(headerCell);
+    }
+    headerContainer.appendChild(dateHeaderRow);
 
-        const dayCol = document.createElement('div');
-        dayCol.className = 'day-col';
-        dayCol.dataset.date = formatDate(date);
-        body.appendChild(dayCol);
-
+    // --- Render all-day strip row ---
+    const allDayStrip = document.createElement('div');
+    allDayStrip.className = 'all-day-strip';
+    allDayStrip.style.display = 'flex';
+    allDayStrip.appendChild(Object.assign(document.createElement('div'), {className: 'time-col-gutter', innerHTML: '<span style="font-size:11px; color: #888; padding-left: 5px;">all-day</span>'}));
+    for (let i = 0; i < numDays; i++) {
+        const start = new Date(currentDate);
+        if (numDays === 7) {
+            start.setDate(start.getDate() - start.getDay());
+        }
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
         const allDayCol = document.createElement('div');
         allDayCol.className = 'all-day-day-col';
         allDayCol.dataset.date = formatDate(date);
-        allDayStrip.querySelector('.all-day-events-container').appendChild(allDayCol);
+        allDayStrip.appendChild(allDayCol);
     }
+    headerContainer.appendChild(allDayStrip);
 
+    // --- Render time labels ---
     for (let i = 0; i < 24; i++) {
         const timeLabel = document.createElement('div');
         if (i > 0) {
@@ -363,7 +371,21 @@ function renderTimeGrid(numDays) {
         timeCol.appendChild(timeLabel);
     }
     
-    placeEventsInTimeGrid(start, numDays);
+    // --- Render day columns ---
+    for (let i = 0; i < numDays; i++) {
+        const start = new Date(currentDate);
+        if (numDays === 7) {
+            start.setDate(start.getDate() - start.getDay());
+        }
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
+        const dayCol = document.createElement('div');
+        dayCol.className = 'day-col';
+        dayCol.dataset.date = formatDate(date);
+        body.appendChild(dayCol);
+    }
+
+    placeEventsInTimeGrid(numDays === 7 ? (() => { let s = new Date(currentDate); s.setDate(s.getDate() - s.getDay()); return s; })() : new Date(currentDate), numDays);
 }
 
 
@@ -436,6 +458,63 @@ function placeEventsInTimeGrid(viewStartDate, numDays) {
 function showTaskDetails(page, date) {
     const sidebar = document.getElementById('taskSidebar');
     const sidebarContent = document.getElementById('taskSidebarContent');
+
+    // --- Location Breadcrumb (Full Hierarchy, including DB's parent page) ---
+    let breadcrumbParts = [];
+    breadcrumbParts.push(`<a href=\"/\"><i class=\"fas fa-home\"></i> Home</a>`);
+
+    // First, build the full parent chain for the page
+    let parentChain = [];
+    let current = page;
+    while (current && (current.parent_page || current.parent_database_id)) {
+        if (current.parent_page) {
+            parentChain.push({
+                type: 'page',
+                id: current.parent_page.id,
+                title: current.parent_page.title
+            });
+            current = current.parent_page;
+        } else if (current.parent_database_id && allDatabases[current.parent_database_id]) {
+            const db = allDatabases[current.parent_database_id];
+            // Traverse up the database's parent_page chain if it exists
+            let dbParentChain = [];
+            let dbCurrent = db;
+            while (dbCurrent && dbCurrent.parent_page) {
+                dbParentChain.push({
+                    type: 'page',
+                    id: dbCurrent.parent_page.id,
+                    title: dbCurrent.parent_page.title
+                });
+                dbCurrent = dbCurrent.parent_page;
+            }
+            dbParentChain = dbParentChain.reverse();
+            parentChain = parentChain.concat(dbParentChain);
+            // Add the database itself
+            parentChain.push({
+                type: 'database',
+                id: db.id,
+                title: db.name,
+                color: db.color
+            });
+            break;
+        } else {
+            break;
+        }
+    }
+    parentChain = parentChain.reverse();
+    parentChain.forEach(item => {
+        breadcrumbParts.push('<span class="breadcrumb-separator">/</span>');
+        if (item.type === 'database') {
+            breadcrumbParts.push(`<a href=\"/database/${item.id}\"><span style=\"color:${item.color};font-weight:500;\">${item.title}</span></a>`);
+        } else {
+            breadcrumbParts.push(`<a href=\"/page/${item.id}\">${item.title}</a>`);
+        }
+    });
+    // Current task (not a link)
+    breadcrumbParts.push('<span class="breadcrumb-separator">/</span>');
+    breadcrumbParts.push(`<span style=\"font-weight:600; color:#fff;\">${page.title}</span>`);
+    let locationBreadcrumb = `<div class=\"breadcrumb\" style=\"margin-bottom:8px; font-size:13px; color:#9ca3af;\">${breadcrumbParts.join(' ')}</div>`;
+
     document.getElementById('taskSidebarTitle').textContent = page.title;
 
     // --- Time Information ---
@@ -477,6 +556,7 @@ function showTaskDetails(page, date) {
 
     // --- Build Sidebar HTML ---
     sidebarContent.innerHTML = `
+        ${locationBreadcrumb}
         <div class="task-sidebar-section">
             <p><strong><i class="fas fa-calendar-alt"></i> Date:</strong> ${date}</p>
             <p><strong><i class="fas fa-clock"></i> Time:</strong> ${timeString}</p>
