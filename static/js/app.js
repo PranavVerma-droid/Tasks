@@ -844,24 +844,6 @@ function renderNoteTree(items, parentElement, currentPath = '') {
     });
 }
 
-
-function createFallbackEditor(content) {
-    const editorContainer = document.getElementById('noteEditor_editor');
-    // Escape HTML content for textarea to prevent XSS
-    const escapedContent = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
-    editorContainer.innerHTML = `<textarea id="fallbackEditor" style="width: 100%; height: calc(100vh - 200px); padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;">${escapedContent}</textarea>`;
-    
-    // Set up auto-save for fallback editor
-    const fallbackEditor = document.getElementById('fallbackEditor');
-    let saveTimeout;
-    fallbackEditor.addEventListener('input', () => {
-        clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(() => {
-            saveCurrentNote();
-        }, 1000);
-    });
-}
-
 function openNote(notePath) {
     // Save current note before switching if there's an active editor
     if (noteEditorInstance && currentNotePath && currentNotePath !== notePath) {
@@ -938,7 +920,7 @@ function initializeNoteEditor(content) {
         try {
             console.log('Attempting to create RichTextEditor...');
             
-            // Create the editor
+            // Create the editor on the container div
             noteEditorInstance = new RichTextEditor('#noteEditor_editor', {
                 placeholder: 'Start writing your note...',
                 height: 'calc(100vh - 200px)',
@@ -968,6 +950,8 @@ function setEditorContent(content) {
     
     if (!noteEditorInstance) {
         console.error('No editor instance available');
+        const fallback = document.getElementById('fallbackEditor');
+        if (fallback) fallback.value = content;
         return;
     }
 
@@ -979,10 +963,7 @@ function setEditorContent(content) {
         () => noteEditorInstance.html(content),
         () => {
             // Direct DOM manipulation as last resort
-            const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]') || 
-                                  document.querySelector('#noteEditor_editor .editor-content') ||
-                                  document.querySelector('#noteEditor_editor .ql-editor') ||
-                                  editorContainer.querySelector('[contenteditable]');
+            const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]');
             if (editableElement) {
                 editableElement.innerHTML = content;
                 console.log('Content set via DOM manipulation');
@@ -1026,9 +1007,7 @@ function setupEditorEventListeners() {
         () => noteEditorInstance.on && noteEditorInstance.on('text-change', debouncedSave),
         () => {
             // Direct DOM event binding
-            const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]') || 
-                                  document.querySelector('#noteEditor_editor .editor-content') ||
-                                  document.querySelector('#noteEditor_editor .ql-editor');
+            const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]');
             if (editableElement) {
                 editableElement.addEventListener('input', debouncedSave);
                 editableElement.addEventListener('keyup', debouncedSave);
@@ -1053,16 +1032,39 @@ function setupEditorEventListeners() {
     }
 }
 
+/**
+ * FIX: This function now creates the textarea element programmatically
+ * to avoid DOM parsing issues with innerHTML. It's more robust and ensures
+ * the element exists before we try to add an event listener to it.
+ * It also targets the correct container element.
+ * I also removed the duplicate definition of this function.
+ */
 function createFallbackEditor(content) {
     console.log('Creating fallback editor with content:', content);
-    
     const editorContainer = document.getElementById('noteEditor_editor');
-    const escapedContent = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+
+    if (!editorContainer) {
+        console.error("Fallback editor container '#noteEditor_editor' not found.");
+        return;
+    }
+
+    // Create the textarea element programmatically
+    const fallbackEditor = document.createElement('textarea');
+    fallbackEditor.id = 'fallbackEditor';
+    fallbackEditor.style.width = '100%';
+    fallbackEditor.style.height = 'calc(100vh - 200px)';
+    fallbackEditor.style.padding = '10px';
+    fallbackEditor.style.border = '1px solid #ccc';
+    fallbackEditor.style.borderRadius = '4px';
+    fallbackEditor.style.fontFamily = 'monospace';
+    fallbackEditor.style.background = '#2d2d2d';
+    fallbackEditor.style.color = '#fff';
+    fallbackEditor.style.resize = 'none';
     
-    editorContainer.innerHTML = `<textarea id="fallbackEditor" style="width: 100%; height: calc(100vh - 200px); padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; background: #2d2d2d; color: #fff; resize: none;">${escapedContent}</textarea>`;
-    
-    // Set up auto-save for fallback editor
-    const fallbackEditor = document.getElementById('fallbackEditor');
+    // Use .value to set content for a textarea
+    fallbackEditor.value = content;
+
+    // Add the event listener
     let saveTimeout;
     fallbackEditor.addEventListener('input', () => {
         clearTimeout(saveTimeout);
@@ -1070,9 +1072,14 @@ function createFallbackEditor(content) {
             saveCurrentNote();
         }, 1000);
     });
+
+    // Clear the container and append the new editor
+    editorContainer.innerHTML = '';
+    editorContainer.appendChild(fallbackEditor);
     
-    console.log('Fallback editor created');
+    console.log('Fallback editor created and appended.');
 }
+
 
 function saveCurrentNote() {
     if (!currentNotePath) {
@@ -1090,9 +1097,7 @@ function saveCurrentNote() {
             () => noteEditorInstance.getValue && noteEditorInstance.getValue(),
             () => noteEditorInstance.html && noteEditorInstance.html(),
             () => {
-                const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]') || 
-                                      document.querySelector('#noteEditor_editor .editor-content') ||
-                                      document.querySelector('#noteEditor_editor .ql-editor');
+                const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]');
                 return editableElement ? editableElement.innerHTML : null;
             }
         ];
@@ -1256,7 +1261,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // =================================================================================
-// RICH TEXT EDITOR SINGLETON WRAPPER (THE FIX)
+// RICH TEXT EDITOR SINGLETON WRAPPER
 // =================================================================================
 // Store RichTextEditor instances globally to prevent re-initialization on the same element.
 window.richTextEditors = window.richTextEditors || [];

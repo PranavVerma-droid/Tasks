@@ -38,8 +38,13 @@
             <div class="note-editor-header">
                 <h2 id="noteEditorTitle"></h2>
             </div>
-            <div class="note-content-editor">
-                <textarea id="noteEditor_editor" data-rich-text="true" data-placeholder="Start writing your note..."></textarea>
+            <!-- 
+              FIX: The ID has been moved from the textarea to this parent div.
+              This div will now act as the container for the rich text editor 
+              or the fallback textarea, preventing invalid nested HTML.
+            -->
+            <div class="note-content-editor" id="noteEditor_editor">
+                <!-- Editor will be dynamically inserted here by app.js -->
             </div>
         </div>
         <div id="notesEmptyState" class="empty-state">
@@ -70,24 +75,17 @@
         notesEmptyState.style.display = 'flex'; // Use flex for centering
     });
 
-    // Override openNote to also manage the empty state visibility
-    const originalOpenNote = window.openNote;
-    window.openNote = function(notePath) {
-        originalOpenNote(notePath); // Call the original function
+    // This logic can be simplified now, but we'll keep it for consistency.
+    // The visibility is primarily handled in openNote and deleteNoteOrFolder in app.js
+    function showEditor() {
         document.getElementById('notesEmptyState').style.display = 'none';
         document.getElementById('noteEditor').style.display = 'block';
-    };
+    }
 
-    // Override deleteNoteOrFolder to also manage the empty state visibility
-    const originalDeleteNoteOrFolder = window.deleteNoteOrFolder;
-    window.deleteNoteOrFolder = function(itemPath, type) {
-        originalDeleteNoteOrFolder(itemPath, type).then(() => {
-            // After deletion, if no note is open, show empty state
-            if (!window.currentNotePath) {
-                document.getElementById('notesEmptyState').style.display = 'flex';
-                document.getElementById('noteEditor').style.display = 'none';
-            }
-        });
-    };
+    function showEmptyState() {
+        document.getElementById('notesEmptyState').style.display = 'flex';
+        document.getElementById('noteEditor').style.display = 'none';
+    }
+
 </script>
 {% endblock %}
