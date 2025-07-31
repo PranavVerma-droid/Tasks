@@ -7,6 +7,7 @@ let currentModalCallback = null;
 window.currentPageId = null; // Set by page.html template
 window.currentDatabaseId = null; // Set dynamically
 let currentNotePath = null; // Global variable to track the currently open note
+let noteEditorInstance = null; // Store the single note editor instance
 
 // =================================================================================
 // MODAL DIALOG FUNCTIONS
@@ -245,6 +246,47 @@ function showPageEditModal(page, database) {
             }
         });
     });
+}
+
+function initRichTextEditorForModal() {
+    // Only initialize editors for elements that don't already have them
+    document.querySelectorAll('textarea[data-rich-text="true"]').forEach(textarea => {
+        if (!textarea.dataset.editorInitialized && window.RichTextEditor) {
+            try {
+                const editor = new RichTextEditor(textarea, {
+                    placeholder: textarea.dataset.placeholder || 'Enter text...',
+                    height: '200px'
+                });
+                textarea.dataset.editorInitialized = 'true';
+            } catch (error) {
+                console.error('Error initializing modal rich text editor:', error);
+            }
+        }
+    });
+}
+
+function getRichTextContent(selector) {
+    const element = document.querySelector(selector);
+    if (!element) return '';
+    
+    // If it's a rich text editor, try to get content from it
+    if (element.dataset.editorInitialized === 'true') {
+        // Try to find the editor instance - this is editor-specific
+        // You might need to adjust this based on your RichTextEditor implementation
+        try {
+            // Common method names for getting content
+            if (element.editor && typeof element.editor.getContent === 'function') {
+                return element.editor.getContent();
+            } else if (element.value !== undefined) {
+                return element.value;
+            }
+        } catch (error) {
+            console.warn('Error getting rich text content:', error);
+        }
+    }
+    
+    // Fallback to textarea value or innerHTML
+    return element.value || element.innerHTML || '';
 }
 
 function confirmEditPage(pageId, databaseId) {
@@ -802,41 +844,59 @@ function renderNoteTree(items, parentElement, currentPath = '') {
     });
 }
 
+
+function createFallbackEditor(content) {
+    const editorContainer = document.getElementById('noteEditor_editor');
+    // Escape HTML content for textarea to prevent XSS
+    const escapedContent = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+    editorContainer.innerHTML = `<textarea id="fallbackEditor" style="width: 100%; height: calc(100vh - 200px); padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace;">${escapedContent}</textarea>`;
+    
+    // Set up auto-save for fallback editor
+    const fallbackEditor = document.getElementById('fallbackEditor');
+    let saveTimeout;
+    fallbackEditor.addEventListener('input', () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            saveCurrentNote();
+        }, 1000);
+    });
+}
+
 function openNote(notePath) {
+    // Save current note before switching if there's an active editor
+    if (noteEditorInstance && currentNotePath && currentNotePath !== notePath) {
+        saveCurrentNote();
+    }
+
     currentNotePath = notePath;
     document.getElementById('noteEditor').style.display = 'block';
     document.getElementById('notesEmptyState').style.display = 'none';
     document.getElementById('noteEditorTitle').textContent = notePath.split('/').pop().replace('.md', '');
-    
+
     const editorEl = document.getElementById('noteEditor_editor');
     if (editorEl) {
-        editorEl.dataset.currentNotePath = notePath; // Store path for auto-save
+        editorEl.dataset.currentNotePath = notePath;
     }
 
+    // First, fetch the note content
     fetch(`/api/notes/get?path=${encodeURIComponent(notePath)}`)
         .then(response => {
             if (!response.ok) {
-                return response.json().then(err => { throw new Error(err.error || `HTTP error! Status: ${response.status}`); })
-                                 .catch(() => { throw new Error(`HTTP error! Status: ${response.status}`); });
+                return response.json().then(err => { 
+                    throw new Error(err.error || `HTTP error! Status: ${response.status}`); 
+                }).catch(() => { 
+                    throw new Error(`HTTP error! Status: ${response.status}`); 
+                });
             }
             return response.json();
         })
         .then(data => {
             if (data.success) {
                 let content = data.content || '';
-                const isHtml = /<([a-z][\s\S]*?)>/i.test(content);
-                let htmlContent = isHtml ? content : markdownToHtml(content);
-
-                // The RichTextEditor wrapper now correctly prevents duplicate instances.
-                const editorInstance = new RichTextEditor('#noteEditor_editor', {
-                    placeholder: 'Start writing your note...',
-                    height: 'calc(100vh - 200px)',
-                    autoSave: true,
-                });
+                console.log('Loaded content:', content); // Debug log
                 
-                if (editorInstance) {
-                    editorInstance.setContent(htmlContent);
-                }
+                // Initialize or recreate the editor for this specific note
+                initializeNoteEditor(content);
             } else {
                 throw new Error(data.error || 'Failed to load note content.');
             }
@@ -849,19 +909,239 @@ function openNote(notePath) {
         });
 }
 
-function markdownToHtml(md) {
-    if (!md) return '';
-    let html = md;
-    html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    html = html.replace(/\n/g, '<br>');
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-    html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
-    return html;
+function initializeNoteEditor(content) {
+    console.log('initializeNoteEditor called with content:', content); // Debug log
+    
+    // Clean up existing editor if it exists
+    if (noteEditorInstance) {
+        try {
+            if (typeof noteEditorInstance.destroy === 'function') {
+                noteEditorInstance.destroy();
+            }
+        } catch (e) {
+            console.warn('Error destroying previous editor instance:', e);
+        }
+        noteEditorInstance = null;
+    }
+
+    // Clear the editor container
+    const editorContainer = document.getElementById('noteEditor_editor');
+    if (!editorContainer) {
+        console.error('Editor container not found!');
+        return;
+    }
+    
+    editorContainer.innerHTML = '';
+
+    // Try to initialize rich text editor
+    if (window.RichTextEditor) {
+        try {
+            console.log('Attempting to create RichTextEditor...');
+            
+            // Create the editor
+            noteEditorInstance = new RichTextEditor('#noteEditor_editor', {
+                placeholder: 'Start writing your note...',
+                height: 'calc(100vh - 200px)',
+                autoSave: false,
+            });
+            
+            console.log('RichTextEditor created:', noteEditorInstance);
+            
+            // Wait for editor to be ready and set content
+            setTimeout(() => {
+                setEditorContent(content);
+                setupEditorEventListeners();
+            }, 300); // Increased timeout
+            
+        } catch (error) {
+            console.error('Error initializing RichTextEditor:', error);
+            createFallbackEditor(content);
+        }
+    } else {
+        console.warn('RichTextEditor not available, using fallback');
+        createFallbackEditor(content);
+    }
+}
+
+function setEditorContent(content) {
+    console.log('setEditorContent called with:', content);
+    
+    if (!noteEditorInstance) {
+        console.error('No editor instance available');
+        return;
+    }
+
+    // Try multiple methods to set content
+    const methods = [
+        () => noteEditorInstance.setContent(content),
+        () => noteEditorInstance.setHTML(content),
+        () => noteEditorInstance.setValue(content),
+        () => noteEditorInstance.html(content),
+        () => {
+            // Direct DOM manipulation as last resort
+            const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]') || 
+                                  document.querySelector('#noteEditor_editor .editor-content') ||
+                                  document.querySelector('#noteEditor_editor .ql-editor') ||
+                                  editorContainer.querySelector('[contenteditable]');
+            if (editableElement) {
+                editableElement.innerHTML = content;
+                console.log('Content set via DOM manipulation');
+                return true;
+            }
+            return false;
+        }
+    ];
+
+    for (let i = 0; i < methods.length; i++) {
+        try {
+            const result = methods[i]();
+            if (result !== false) {
+                console.log(`Content set successfully using method ${i + 1}`);
+                return;
+            }
+        } catch (error) {
+            console.warn(`Method ${i + 1} failed:`, error);
+        }
+    }
+    
+    console.error('All methods to set content failed');
+}
+
+function setupEditorEventListeners() {
+    if (!noteEditorInstance) return;
+    
+    let saveTimeout;
+    const debouncedSave = () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            saveCurrentNote();
+        }, 1000);
+    };
+
+    // Try multiple event binding methods
+    const eventMethods = [
+        () => noteEditorInstance.onChange && noteEditorInstance.onChange(debouncedSave),
+        () => noteEditorInstance.on && noteEditorInstance.on('input', debouncedSave),
+        () => noteEditorInstance.on && noteEditorInstance.on('change', debouncedSave),
+        () => noteEditorInstance.on && noteEditorInstance.on('text-change', debouncedSave),
+        () => {
+            // Direct DOM event binding
+            const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]') || 
+                                  document.querySelector('#noteEditor_editor .editor-content') ||
+                                  document.querySelector('#noteEditor_editor .ql-editor');
+            if (editableElement) {
+                editableElement.addEventListener('input', debouncedSave);
+                editableElement.addEventListener('keyup', debouncedSave);
+                editableElement.addEventListener('paste', debouncedSave);
+                console.log('Event listeners set up via DOM');
+                return true;
+            }
+            return false;
+        }
+    ];
+
+    for (let i = 0; i < eventMethods.length; i++) {
+        try {
+            const result = eventMethods[i]();
+            if (result !== false) {
+                console.log(`Event listeners set up using method ${i + 1}`);
+                break;
+            }
+        } catch (error) {
+            console.warn(`Event method ${i + 1} failed:`, error);
+        }
+    }
+}
+
+function createFallbackEditor(content) {
+    console.log('Creating fallback editor with content:', content);
+    
+    const editorContainer = document.getElementById('noteEditor_editor');
+    const escapedContent = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+    
+    editorContainer.innerHTML = `<textarea id="fallbackEditor" style="width: 100%; height: calc(100vh - 200px); padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; background: #2d2d2d; color: #fff; resize: none;">${escapedContent}</textarea>`;
+    
+    // Set up auto-save for fallback editor
+    const fallbackEditor = document.getElementById('fallbackEditor');
+    let saveTimeout;
+    fallbackEditor.addEventListener('input', () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            saveCurrentNote();
+        }, 1000);
+    });
+    
+    console.log('Fallback editor created');
+}
+
+function saveCurrentNote() {
+    if (!currentNotePath) {
+        console.log('No current note path, skipping save');
+        return;
+    }
+
+    let content = '';
+    
+    // Try to get content from various sources
+    if (noteEditorInstance) {
+        const methods = [
+            () => noteEditorInstance.getContent && noteEditorInstance.getContent(),
+            () => noteEditorInstance.getHTML && noteEditorInstance.getHTML(),
+            () => noteEditorInstance.getValue && noteEditorInstance.getValue(),
+            () => noteEditorInstance.html && noteEditorInstance.html(),
+            () => {
+                const editableElement = document.querySelector('#noteEditor_editor [contenteditable="true"]') || 
+                                      document.querySelector('#noteEditor_editor .editor-content') ||
+                                      document.querySelector('#noteEditor_editor .ql-editor');
+                return editableElement ? editableElement.innerHTML : null;
+            }
+        ];
+
+        for (let method of methods) {
+            try {
+                const result = method();
+                if (result !== null && result !== undefined) {
+                    content = result;
+                    break;
+                }
+            } catch (error) {
+                console.warn('Content retrieval method failed:', error);
+            }
+        }
+    }
+    
+    // Fallback to textarea
+    if (!content) {
+        const fallbackEditor = document.getElementById('fallbackEditor');
+        if (fallbackEditor) {
+            content = fallbackEditor.value;
+        }
+    }
+
+    console.log('Saving content:', content);
+
+    // Only save if content is not empty or undefined
+    if (content !== undefined && content !== null) {
+        fetch('/api/notes/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                path: currentNotePath, 
+                content: content 
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                console.error('Error saving note:', data.error);
+            } else {
+                console.log('Note saved successfully');
+            }
+        })
+        .catch(error => {
+            console.error('Error saving note:', error);
+        });
+    }
 }
 
 function showCreateModal(parentPath, type) {
@@ -900,7 +1180,10 @@ function confirmCreateNoteOrFolder(parentPath, type) {
             closeModal();
             listNotesAndFolders(); // Refresh tree
             if (type === 'file') {
-                openNote(data.path); // Open the newly created note
+                // Wait a bit for the tree to refresh, then open the note
+                setTimeout(() => {
+                    openNote(data.path);
+                }, 500);
             }
         } else {
             alert('Error creating ' + type + ': ' + data.error);
@@ -924,6 +1207,17 @@ function deleteNoteOrFolder(itemPath, type) {
                     document.getElementById('noteEditor').style.display = 'none';
                     document.getElementById('notesEmptyState').style.display = 'flex';
                     currentNotePath = null;
+                    // Clean up editor instance when the current note is deleted
+                    if (noteEditorInstance) {
+                        try {
+                            if (typeof noteEditorInstance.destroy === 'function') {
+                                noteEditorInstance.destroy();
+                            }
+                        } catch (e) {
+                            console.warn('Error destroying editor:', e);
+                        }
+                        noteEditorInstance = null;
+                    }
                 }
             } else {
                 alert('Error deleting ' + type + ': ' + data.error);
@@ -931,7 +1225,6 @@ function deleteNoteOrFolder(itemPath, type) {
         });
     }
 }
-
 
 // =================================================================================
 // INITIALIZATION & EVENT LISTENERS
@@ -1000,7 +1293,6 @@ if (window.RichTextEditor) {
     };
 }
 
-
 // =================================================================================
 // EXPORT FUNCTIONS TO WINDOW OBJECT
 // =================================================================================
@@ -1057,3 +1349,4 @@ window.openNote = openNote;
 window.showCreateModal = showCreateModal;
 window.confirmCreateNoteOrFolder = confirmCreateNoteOrFolder;
 window.deleteNoteOrFolder = deleteNoteOrFolder;
+window.saveCurrentNote = saveCurrentNote;
