@@ -63,7 +63,150 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Add RichTextEditor library BEFORE app.js -->
+<!-- Option 1: If using Quill.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.css" rel="stylesheet">
+
+<!-- Option 2: If using TinyMCE -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js"></script> -->
+
+<!-- Option 3: If using CKEditor -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/ckeditor/4.22.1/ckeditor.js"></script> -->
+
+<!-- Option 4: If you have a custom RichTextEditor -->
+<!-- <script src="{{ url_for('static', filename='js/rich-text-editor.js') }}"></script> -->
+
 <script>
+    // Create a simple RichTextEditor wrapper for Quill
+    if (typeof Quill !== 'undefined') {
+        window.RichTextEditor = function(selector, options) {
+            options = options || {};
+            const element = typeof selector === 'string' ? document.querySelector(selector) : selector;
+            
+            if (!element) {
+                console.error('RichTextEditor: Element not found');
+                return null;
+            }
+
+            // Clear the element and create Quill
+            element.innerHTML = '';
+            
+            const quill = new Quill(element, {
+                theme: 'snow',
+                placeholder: options.placeholder || 'Start typing...',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline', 'strike'],
+                        ['blockquote', 'code-block'],
+                        [{ 'header': 1 }, { 'header': 2 }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'script': 'sub'}, { 'script': 'super' }],
+                        [{ 'indent': '-1'}, { 'indent': '+1' }],
+                        ['link', 'image'],
+                        ['clean']
+                    ]
+                }
+            });
+
+            // Set height if specified
+            if (options.height) {
+                element.style.height = options.height;
+                const editor = element.querySelector('.ql-editor');
+                if (editor) {
+                    editor.style.height = 'calc(' + options.height + ' - 42px)'; // Subtract toolbar height
+                }
+            }
+
+            // Store change callback for later use
+            let changeCallback = null;
+
+            // Return wrapper with standard methods
+            const wrapper = {
+                setContent: function(content) {
+                    // Disable change events temporarily to avoid triggering auto-save during load
+                    const tempCallback = changeCallback;
+                    changeCallback = null;
+                    
+                    quill.root.innerHTML = content;
+                    
+                    // Re-enable change events after a short delay
+                    setTimeout(() => {
+                        changeCallback = tempCallback;
+                    }, 100);
+                },
+                getContent: function() {
+                    return quill.root.innerHTML;
+                },
+                setHTML: function(content) {
+                    return this.setContent(content);
+                },
+                getHTML: function() {
+                    return this.getContent();
+                },
+                setValue: function(content) {
+                    return this.setContent(content);
+                },
+                getValue: function() {
+                    return this.getContent();
+                },
+                html: function(content) {
+                    if (content !== undefined) {
+                        return this.setContent(content);
+                    }
+                    return this.getContent();
+                },
+                on: function(event, callback) {
+                    if (event === 'text-change' || event === 'change' || event === 'input') {
+                        changeCallback = callback;
+                        quill.on('text-change', function() {
+                            if (changeCallback) {
+                                changeCallback();
+                            }
+                        });
+                    }
+                },
+                onChange: function(callback) {
+                    changeCallback = callback;
+                    quill.on('text-change', function() {
+                        if (changeCallback) {
+                            changeCallback();
+                        }
+                    });
+                },
+                destroy: function() {
+                    changeCallback = null;
+                    // Quill doesn't have a destroy method, so we clear the container
+                    element.innerHTML = '';
+                }
+            };
+
+            // Set up auto-save immediately if not disabled
+            if (options.autoSave !== false) {
+                let saveTimeout;
+                const debouncedSave = () => {
+                    clearTimeout(saveTimeout);
+                    saveTimeout = setTimeout(() => {
+                        if (window.saveCurrentNote) {
+                            console.log('Auto-saving note...');
+                            window.saveCurrentNote();
+                        }
+                    }, 1000);
+                };
+
+                quill.on('text-change', function() {
+                    if (changeCallback) {
+                        changeCallback();
+                    }
+                    // Always trigger auto-save on text change
+                    debouncedSave();
+                });
+            }
+
+            return wrapper;
+        };
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         // Initial load of notes tree is handled by app.js
         // The empty state is shown by default and hidden when a note is opened.

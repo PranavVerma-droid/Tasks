@@ -924,7 +924,7 @@ function initializeNoteEditor(content) {
             noteEditorInstance = new RichTextEditor('#noteEditor_editor', {
                 placeholder: 'Start writing your note...',
                 height: 'calc(100vh - 200px)',
-                autoSave: false,
+                autoSave: true,
             });
             
             console.log('RichTextEditor created:', noteEditorInstance);
