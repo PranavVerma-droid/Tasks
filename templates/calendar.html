@@ -157,6 +157,13 @@ const allDatabases = {{ data.databases | tojson }};
 const completionLogs = {{ completion_logs | tojson }};
 let activeDatabaseIds = Object.keys(allDatabases);
 
+// --- Helper: Parse YYYY-MM-DD as local date (not UTC) ---
+function parseLocalDate(dateString) {
+    // dateString: 'YYYY-MM-DD'
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     buildDatabaseFilterTree();
     renderCalendar();
@@ -295,7 +302,10 @@ function renderMonthView() {
         
         const eventsContainer = dayEl.querySelector('.day-events');
         const dateString = formatDate(day);
-        const dayEvents = calendarItems.filter(item => item.date === dateString && activeDatabaseIds.includes(item.page.parent_database_id));
+        // Use parseLocalDate for comparison
+        const dayEvents = calendarItems.filter(item => {
+            return formatDate(parseLocalDate(item.date)) === dateString && activeDatabaseIds.includes(item.page.parent_database_id);
+        });
         
         dayEvents.forEach(event => {
             const eventEl = document.createElement('div');
@@ -405,11 +415,13 @@ function renderDayView() {
 }
 
 function placeEventsInTimeGrid(viewStartDate, numDays) {
+    // viewStartDate is a Date object (local)
     const viewEndDate = new Date(viewStartDate);
     viewEndDate.setDate(viewStartDate.getDate() + numDays);
 
     const eventsInView = calendarItems.filter(item => {
-        const itemDate = new Date(item.date + 'T00:00:00'); // Ensure we compare dates correctly
+        // Use parseLocalDate to avoid timezone issues
+        const itemDate = parseLocalDate(item.date);
         return itemDate >= viewStartDate && itemDate < viewEndDate && activeDatabaseIds.includes(item.page.parent_database_id);
     });
 
