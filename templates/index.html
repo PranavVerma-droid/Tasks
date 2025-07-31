@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block top_bar_actions %}
-<button class="btn btn-primary" onclick="createNewPage()">
+<button class="btn btn-primary" onclick="createNewRootPage()">
     <i class="fas fa-plus"></i>
     New Page
 </button>
@@ -21,7 +21,7 @@
     </div>
     
     <div class="quick-actions">
-        <div class="action-card" onclick="createNewPage()">
+        <div class="action-card" onclick="createNewRootPage()">
             <div class="action-icon">
                 <i class="fas fa-file-alt"></i>
             </div>
@@ -63,12 +63,41 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
 <script type="text/javascript">
 // Assign page IDs from Jinja to a JS variable
 const allPageIds = {{ data.pages.keys() | list | tojson | safe }};
 
+/**
+ * Creates a new root page and redirects to it.
+ * Makes a POST request to the /api/create_page endpoint.
+ */
+function createNewRootPage() {
+    fetch('/api/create_page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Untitled Page', properties: {} })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.page_id) {
+            window.location.href = `/page/${data.page_id}`;
+        } else {
+            // Using a more modern notification would be better than alert.
+            console.error('Failed to create new page.');
+        }
+    })
+    .catch(error => {
+        console.error('Error creating new page:', error);
+    });
+}
+// Ensure the function is available in the global scope for the onclick attributes.
+window.createNewRootPage = createNewRootPage;
+
+/**
+ * Navigates to the first available page.
+ * This is a placeholder function.
+ */
 function createNewPage() {
     // For now, redirect to the first page
     if (allPageIds.length > 0) {
@@ -76,6 +105,10 @@ function createNewPage() {
     }
 }
 
+/**
+ * Navigates to the first available page to create a database there.
+ * This is a placeholder function.
+ */
 function createDatabase() {
     // For now, redirect to the first page to create database there
     if (allPageIds.length > 0) {
@@ -83,7 +116,12 @@ function createDatabase() {
     }
 }
 
+/**
+ * Placeholder function for adding a page to a database.
+ * @param {string} databaseId - The ID of the database.
+ */
 function addPageToDatabase(databaseId) {
-    alert('Add Page to Database is not implemented on the home page. Please use this feature inside a page or database.');
+    console.log('Add Page to Database is not implemented on the home page. Please use this feature inside a page or database.');
 }
 </script>
+{% endblock %}
