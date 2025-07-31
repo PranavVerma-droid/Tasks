@@ -799,46 +799,32 @@ function renderNoteTree(items, parentElement, currentPath = '') {
     parentElement.innerHTML = '';
     items.forEach(item => {
         const itemEl = document.createElement('div');
-        itemEl.className = `note-tree-item note-tree-item-${item.type}`;
-        itemEl.dataset.path = item.path;
-
+        itemEl.className = 'note-tree-item';
         if (item.type === 'folder') {
             itemEl.innerHTML = `
                 <div class="note-tree-folder-header">
-                    <i class="fas fa-chevron-right folder-toggle-icon"></i>
-                    <i class="fas fa-folder folder-icon"></i>
+                    <span class="folder-icon"><i class="fas fa-folder"></i></span>
                     <span>${item.name}</span>
                     <div class="note-item-actions">
-                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); showCreateModal('${item.path}', 'file')"><i class="fas fa-plus"></i> Note</button>
-                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); showCreateModal('${item.path}', 'folder')"><i class="fas fa-folder-plus"></i> Folder</button>
-                        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteNoteOrFolder('${item.path}', 'folder')"><i class="fas fa-trash"></i></button>
+                        <button class="btn btn-sm btn-secondary" onclick="showCreateModal('${item.path}', 'file')" title="New Note"><i class="fas fa-plus"></i></button>
+                        <button class="btn btn-sm btn-secondary" onclick="showCreateModal('${item.path}', 'folder')" title="New Folder"><i class="fas fa-folder-plus"></i></button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteNoteOrFolder('${item.path}', 'folder')" title="Delete Folder"><i class="fas fa-trash"></i></button>
                     </div>
-                </div>
-                <div class="note-tree-folder-children" style="display: none;"></div>
-            `;
-            const folderHeader = itemEl.querySelector('.note-tree-folder-header');
-            folderHeader.addEventListener('click', (e) => {
-                const childrenContainer = itemEl.querySelector('.note-tree-folder-children');
-                const toggleIcon = itemEl.querySelector('.folder-toggle-icon');
-                if (childrenContainer.style.display === 'none') {
-                    childrenContainer.style.display = 'block';
-                    toggleIcon.classList.replace('fa-chevron-right', 'fa-chevron-down');
-                } else {
-                    childrenContainer.style.display = 'none';
-                    toggleIcon.classList.replace('fa-chevron-down', 'fa-chevron-right');
-                }
-            });
-            renderNoteTree(item.children, itemEl.querySelector('.note-tree-folder-children'), item.path);
-        } else { // file
+                </div>`;
+            const childrenEl = document.createElement('div');
+            childrenEl.className = 'note-tree-folder-children';
+            renderNoteTree(item.children, childrenEl, item.path);
+            itemEl.appendChild(childrenEl);
+        } else {
             itemEl.innerHTML = `
-                <div class="note-tree-file-header" onclick="openNote('${item.path}')">
-                    <i class="fas fa-file-alt file-icon"></i>
-                    <span>${item.name}</span>
+                <div class="note-tree-file-header">
+                    <span class="file-icon"><i class="fas fa-file-alt"></i></span>
+                    <span onclick="openNote('${item.path}')" style="cursor:pointer;">${item.name}</span>
                     <div class="note-item-actions">
-                        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteNoteOrFolder('${item.path}', 'file')"><i class="fas fa-trash"></i></button>
+                        <button class="btn btn-sm btn-secondary" onclick="showShareNoteModal('${item.path}')" title="Share"><i class="fas fa-share-alt"></i></button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteNoteOrFolder('${item.path}', 'file')" title="Delete Note"><i class="fas fa-trash"></i></button>
                     </div>
-                </div>
-            `;
+                </div>`;
         }
         parentElement.appendChild(itemEl);
     });

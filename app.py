@@ -159,6 +159,16 @@ def init_database():
         )
     ''')
     
+    # Add note_shares table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS note_shares (
+            share_id TEXT PRIMARY KEY,
+            note_path TEXT NOT NULL,
+            permission TEXT NOT NULL, -- 'view' or 'edit'
+            created_at TEXT
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -1285,6 +1295,122 @@ def settings_view():
     }
     data = load_data()
     return render_template('settings.html', settings=settings, data=data)
+
+# --- Note Sharing Table ---
+
+def create_note_share(note_path, permission='view'):
+    share_id = str(uuid.uuid4())
+    created_at = datetime.now().isoformat()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO note_shares (share_id, note_path, permission, created_at)
+        VALUES (?, ?, ?, ?)
+    ''', (share_id, note_path, permission, created_at))
+    conn.commit()
+    conn.close()
+    return share_id
+
+def get_note_share_by_path(note_path):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM note_shares WHERE note_path = ?', (note_path,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def get_note_share_by_id(share_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM note_shares WHERE share_id = ?', (share_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def update_note_share_permission(share_id, permission):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE note_shares SET permission = ? WHERE share_id = ?', (permission, share_id))
+    conn.commit()
+    conn.close()
+
+# --- Note Sharing API Endpoints ---
+@app.route('/api/notes/share/create', methods=['POST'])
+def api_create_note_share():
+    data = request.json
+    note_path = data.get('note_path')
+    permission = data.get('permission', 'view')
+    if not note_path:
+        return jsonify({'success': False, 'error': 'Missing note_path'}), 400
+    # Only allow one share per note for simplicity
+    existing = get_note_share_by_path(note_path)
+    if existing:
+        return jsonify({'success': True, 'share_id': existing['share_id'], 'permission': existing['permission']})
+    share_id = create_note_share(note_path, permission)
+    return jsonify({'success': True, 'share_id': share_id, 'permission': permission})
+
+@app.route('/api/notes/share/update', methods=['POST'])
+def api_update_note_share():
+    data = request.json
+    share_id = data.get('share_id')
+    permission = data.get('permission')
+    if not share_id or permission not in ['view', 'edit']:
+        return jsonify({'success': False, 'error': 'Invalid input'}), 400
+    update_note_share_permission(share_id, permission)
+    return jsonify({'success': True})
+
+@app.route('/api/notes/share/get', methods=['GET'])
+def api_get_note_share():
+    note_path = request.args.get('note_path')
+    if not note_path:
+        return jsonify({'success': False, 'error': 'Missing note_path'}), 400
+    share = get_note_share_by_path(note_path)
+    if not share:
+        return jsonify({'success': False, 'error': 'No share found'})
+    return jsonify({'success': True, 'share_id': share['share_id'], 'permission': share['permission']})
+
+# --- Public Share Page ---
+@app.route('/share/note/<share_id>', methods=['GET'])
+def public_share_note(share_id):
+    share = get_note_share_by_id(share_id)
+    if not share:
+        return "Invalid or expired share link.", 404
+    note_path = share['note_path']
+    permission = share['permission']
+    # Security: Only allow safe paths
+    if not _is_safe_path(note_path):
+        return "Invalid note path.", 400
+    full_path = os.path.join(NOTES_DIR, note_path)
+    if not os.path.isfile(full_path):
+        return "Note not found.", 404
+    with open(full_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    # Get public URL from env
+    public_url = os.getenv('APP_PUBLIC_URL', 'http://localhost:5000')
+    return render_template('view_share.html', note_content=content, note_path=note_path, share_id=share_id, permission=permission, public_url=public_url)
+
+@app.route('/api/notes/share/update_content', methods=['POST'])
+def api_update_shared_note_content():
+    data = request.json
+    share_id = data.get('share_id')
+    content = data.get('content')
+    share = get_note_share_by_id(share_id)
+    if not share:
+        return jsonify({'success': False, 'error': 'Invalid share'}), 404
+    if share['permission'] != 'edit':
+        return jsonify({'success': False, 'error': 'Not allowed'}), 403
+    note_path = share['note_path']
+    if not _is_safe_path(note_path):
+        return jsonify({'success': False, 'error': 'Invalid path'}), 400
+    full_path = os.path.join(NOTES_DIR, note_path)
+    if not os.path.isfile(full_path):
+        return jsonify({'success': False, 'error': 'Note not found'}), 404
+    try:
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

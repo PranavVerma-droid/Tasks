@@ -60,6 +60,21 @@
         </div>
     </div>
 </div>
+
+<!-- Share Modal (hidden, shown by JS) -->
+<div class="modal-overlay" id="shareNoteModalOverlay" style="display:none;">
+    <div class="modal" style="max-width: 420px;">
+        <div class="modal-header">
+            <h3>Share Note</h3>
+            <button class="close-modal" onclick="closeShareNoteModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-content" id="shareNoteModalContent">
+            <!-- Content loaded by JS -->
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -230,5 +245,72 @@
         document.getElementById('noteEditor').style.display = 'none';
     }
 
+    // --- Share Note Modal Logic ---
+    function showShareNoteModal(notePath) {
+        // Show loading state
+        const modal = document.getElementById('shareNoteModalOverlay');
+        const content = document.getElementById('shareNoteModalContent');
+        modal.style.display = 'flex';
+        content.innerHTML = '<div style="text-align:center;padding:24px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+        // Fetch or create share link
+        fetch(`/api/notes/share/get?note_path=${encodeURIComponent(notePath)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    // Create new share
+                    fetch('/api/notes/share/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ note_path: notePath, permission: 'view' })
+                    })
+                    .then(r2 => r2.json())
+                    .then(data2 => renderShareModalContent(notePath, data2.share_id, data2.permission));
+                } else {
+                    renderShareModalContent(notePath, data.share_id, data.permission);
+                }
+            });
+    }
+    function renderShareModalContent(notePath, shareId, permission) {
+        const publicUrl = '{{ config["APP_PUBLIC_URL"] if config and config["APP_PUBLIC_URL"] else "http://localhost:5000" }}';
+        const link = `${publicUrl}/share/note/${shareId}`;
+        const content = document.getElementById('shareNoteModalContent');
+        content.innerHTML = `
+            <div class="form-group">
+                <label>Share Link</label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="shareNoteLinkInput" class="form-control" value="${link}" readonly style="flex:1;">
+                    <button class="btn btn-secondary btn-sm" onclick="copyShareNoteLink()"><i class="fas fa-copy"></i></button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Permission</label>
+                <select id="shareNotePermission" class="form-control" onchange="updateShareNotePermission('${shareId}')">
+                    <option value="view" ${permission==='view'?'selected':''}>View Only</option>
+                    <option value="edit" ${permission==='edit'?'selected':''}>Editable</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeShareNoteModal()">Close</button>
+                <a class="btn btn-primary" href="${link}" target="_blank"><i class="fas fa-external-link-alt"></i> Open Link</a>
+            </div>
+        `;
+    }
+    function closeShareNoteModal() {
+        document.getElementById('shareNoteModalOverlay').style.display = 'none';
+    }
+    function copyShareNoteLink() {
+        const input = document.getElementById('shareNoteLinkInput');
+        input.select();
+        document.execCommand('copy');
+        input.blur();
+    }
+    function updateShareNotePermission(shareId) {
+        const perm = document.getElementById('shareNotePermission').value;
+        fetch('/api/notes/share/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ share_id: shareId, permission: perm })
+        });
+    }
 </script>
 {% endblock %}
