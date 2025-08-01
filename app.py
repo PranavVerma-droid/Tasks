@@ -473,71 +473,50 @@ def calculate_repetition_dates(start_date: str, repetition_type: str, repetition
         dates = []
         
         if repetition_type == 'daily':
-            interval_days = repetition_config.get('interval', 1)
+            interval = repetition_config.get('interval', 1)
             current = start
             while current <= end:
                 dates.append(current.date().isoformat())
-                current += timedelta(days=interval_days)
+                current += timedelta(days=interval)
         
         elif repetition_type == 'weekly':
+            interval = repetition_config.get('interval', 1)
             days_of_week = repetition_config.get('days_of_week', [start.weekday()])
-            interval_weeks = repetition_config.get('interval', 1)
-            
-            # Start from the beginning of the start week
-            current_week_start = start - timedelta(days=start.weekday())
-            week_count = 0
-            
-            while current_week_start <= end:
-                # Only process weeks that match the interval
-                if week_count % interval_weeks == 0:
-                    for day_of_week in days_of_week:
-                        date = current_week_start + timedelta(days=day_of_week)
-                        if start.date() <= date.date() <= end.date():
-                            dates.append(date.date().isoformat())
-                
-                current_week_start += timedelta(weeks=1)
-                week_count += 1
+            current = start
+            while current <= end:
+                if current.weekday() in days_of_week:
+                    dates.append(current.date().isoformat())
+                current += timedelta(days=1)
         
         elif repetition_type == 'monthly':
-            interval_months = repetition_config.get('interval', 1)
-            day_of_month = repetition_config.get('day_of_month', start.day)
-            current = start.replace(day=min(day_of_month, calendar.monthrange(start.year, start.month)[1]))
-            
+            interval = repetition_config.get('interval', 1)
+            day = repetition_config.get('day', start.day)
+            current = start
             while current <= end:
-                if start.date() <= current.date() <= end.date():
-                    dates.append(current.date().isoformat())
-                
-                # Move to next month
-                current_month = current.month + interval_months
-                current_year = current.year
-                while current_month > 12:
-                    current_month -= 12
-                    current_year += 1
-
                 try:
-                    max_day = calendar.monthrange(current_year, current_month)[1]
-                    next_day = min(day_of_month, max_day)
-                    current = current.replace(year=current_year, month=current_month, day=next_day)
-                except calendar.IllegalMonthError:
-                    break
-
+                    d = current.replace(day=day)
+                    if d >= start and d <= end:
+                        dates.append(d.date().isoformat())
+                except ValueError:
+                    pass
+                month = current.month + interval
+                year = current.year + (month - 1) // 12
+                month = (month - 1) % 12 + 1
+                current = current.replace(year=year, month=month)
+        
         elif repetition_type == 'custom':
-            # Handle custom patterns - same as weekly but with more flexibility
+            interval = repetition_config.get('interval', 1)
             days_of_week = repetition_config.get('days_of_week', [start.weekday()])
-            interval_weeks = repetition_config.get('interval', 1)
-            
-            current_week_start = start - timedelta(days=start.weekday())
-            week_count = 0
-            
-            while current_week_start <= end:
-                if week_count % interval_weeks == 0:
-                    for day_of_week in days_of_week:
-                        date = current_week_start + timedelta(days=day_of_week)
-                        if start.date() <= date.date() <= end.date():
-                            dates.append(date.date().isoformat())
-                
-                current_week_start += timedelta(weeks=1)
-                week_count += 1
+            # days_of_week should be 0=Monday, 6=Sunday (Python's weekday)
+            # If frontend sends 1=Monday, 3=Wednesday, 5=Friday, convert to Python weekday
+            days_of_week = [(d % 7) for d in days_of_week]  # 0=Sunday JS, 0=Monday Python
+            # If user sends 1=Monday, 3=Wednesday, 5=Friday, convert: Python weekday is 0=Monday
+            days_of_week = [((d - 1) % 7) for d in days_of_week]
+            current = start
+            while current <= end:
+                if current.weekday() in days_of_week:
+                    dates.append(current.date().isoformat())
+                current += timedelta(days=1)
         
         return sorted(list(set(dates)))
     except (ValueError, TypeError) as e:
