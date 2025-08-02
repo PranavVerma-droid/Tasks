@@ -135,7 +135,6 @@
 
 .database-filter-item {
     padding: 8px 0;
-    border-bottom: 1px solid #333;
     display: flex;
     align-items: center;
 }
@@ -145,6 +144,7 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
+    flex-grow: 1;
 }
 
 .db-color-dot {
@@ -152,15 +152,63 @@
     height: 12px;
     border-radius: 50%;
     display: inline-block;
+    flex-shrink: 0;
 }
 
 .all-toggle {
     font-weight: 500;
+    border-bottom: 1px solid #333;
 }
 
 .all-toggle label {
     margin: 0;
 }
+
+/* --- NEW: Database Tree Styles --- */
+.db-tree-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #9ca3af;
+    padding: 4px;
+    margin-right: 4px;
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.db-tree-toggle:hover {
+    color: #fff;
+}
+.db-tree-toggle i {
+    transition: transform 0.2s ease-in-out;
+}
+
+.db-tree-no-toggle {
+    width: 24px;
+    height: 24px;
+    margin-right: 4px;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.db-tree-children {
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    max-height: 1000px; /* Set a large max-height for open state */
+}
+
+.db-tree-children.collapsed {
+    max-height: 0;
+}
+
+.db-tree-item-wrapper {
+    border-bottom: 1px solid #333;
+}
+.db-tree-item-wrapper:last-child {
+    border-bottom: none;
+}
+/* --- END: Database Tree Styles --- */
+
 
 /* FullCalendar Theme Overrides for Dark Mode */
 .fc {
@@ -342,6 +390,7 @@
 let calendar;
 const calendarItems = {{ calendar_items | tojson }};
 const allDatabases = {{ data.databases | tojson }};
+const allPages = {{ data.pages | tojson }}; // NEW: Get all pages for hierarchy
 const completionLogs = {{ completion_logs | tojson }};
 let activeDatabaseIds = Object.keys(allDatabases);
 let currentTaskModal = null;
@@ -355,7 +404,7 @@ function parseLocalDate(dateString) {
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeCalendar();
-    buildDatabaseFilterTree();
+    buildDatabaseFilterTree(); // UPDATED to build a tree
 });
 
 function initializeCalendar() {
@@ -505,12 +554,94 @@ function getFilteredEvents() {
     return events;
 }
 
+/**
+ * NEW: Renders a single node in the database tree.
+ * This is a recursive function.
+ * @param {object} node - The node object {db, children}.
+ * @param {HTMLElement} parentElement - The DOM element to append to.
+ * @param {number} level - The current depth of the node.
+ */
+function renderDbNode(node, parentElement, level) {
+    const db = node.db;
+    const itemWrapper = document.createElement('div');
+    itemWrapper.className = 'db-tree-item-wrapper';
+    
+    const hasChildren = node.children.length > 0;
+
+    const item = document.createElement('div');
+    item.className = 'database-filter-item';
+    item.style.paddingLeft = `${level * 15}px`;
+    item.style.borderBottom = 'none';
+    item.style.paddingTop = '4px';
+    item.style.paddingBottom = '4px';
+
+    item.innerHTML = `
+        ${hasChildren ? '<button class="db-tree-toggle" type="button"><i class="fas fa-chevron-down"></i></button>' : '<span class="db-tree-no-toggle"></span>'}
+        <label>
+            <input type="checkbox" class="db-filter-checkbox" value="${db.id}" checked>
+            <span class="db-color-dot" style="background-color: ${db.color};"></span>
+            <span>${db.name}</span>
+        </label>
+    `;
+    itemWrapper.appendChild(item);
+
+    if (hasChildren) {
+        const childrenContainer = document.createElement('div');
+        childrenContainer.className = 'db-tree-children';
+        node.children.forEach(childNode => {
+            renderDbNode(childNode, childrenContainer, level + 1);
+        });
+        itemWrapper.appendChild(childrenContainer);
+    }
+
+    parentElement.appendChild(itemWrapper);
+}
+
+
+/**
+ * UPDATED: Builds the database filter list as a collapsible tree.
+ */
 function buildDatabaseFilterTree() {
     const container = document.getElementById('database-filter-tree');
     if (!container) return;
     container.innerHTML = '';
 
-    // All toggle
+    // 1. Create node objects for each database to hold children
+    const dbNodes = {};
+    for (const dbId in allDatabases) {
+        dbNodes[dbId] = { db: allDatabases[dbId], children: [] };
+    }
+
+    const childDbIds = new Set();
+
+    // 2. Establish parent-child relationships.
+    // A database (child) is nested if its parent page is inside another database (parent).
+    for (const dbId in allDatabases) {
+        const db = allDatabases[dbId];
+        if (db.parent_page_id && allPages[db.parent_page_id]) {
+            const parentPage = allPages[db.parent_page_id];
+            if (parentPage.parent_database_id && dbNodes[parentPage.parent_database_id]) {
+                dbNodes[parentPage.parent_database_id].children.push(dbNodes[dbId]);
+                childDbIds.add(dbId);
+            }
+        }
+    }
+
+    // 3. Find root databases (those that are not children of another DB)
+    const rootDbNodes = [];
+    for (const dbId in dbNodes) {
+        if (!childDbIds.has(dbId)) {
+            rootDbNodes.push(dbNodes[dbId]);
+        }
+    }
+    
+    // Sort root nodes and children alphabetically for consistent order
+    rootDbNodes.sort((a, b) => a.db.name.localeCompare(b.db.name));
+    for (const dbId in dbNodes) {
+        dbNodes[dbId].children.sort((a,b) => a.db.name.localeCompare(b.db.name));
+    }
+
+    // "Show/Hide All" toggle
     const allToggleItem = document.createElement('div');
     allToggleItem.className = 'database-filter-item all-toggle';
     allToggleItem.innerHTML = `
@@ -521,22 +652,13 @@ function buildDatabaseFilterTree() {
     `;
     container.appendChild(allToggleItem);
 
-    // Individual database filters
-    for (const dbId in allDatabases) {
-        const db = allDatabases[dbId];
-        const item = document.createElement('div');
-        item.className = 'database-filter-item';
-        item.innerHTML = `
-            <label>
-                <input type="checkbox" class="db-filter-checkbox" value="${db.id}" checked>
-                <span class="db-color-dot" style="background-color: ${db.color};"></span>
-                <span>${db.name}</span>
-            </label>
-        `;
-        container.appendChild(item);
-    }
+    // 4. Render the tree structure
+    const treeContainer = document.createElement('div');
+    treeContainer.className = 'db-tree-container';
+    rootDbNodes.forEach(node => renderDbNode(node, treeContainer, 0));
+    container.appendChild(treeContainer);
 
-    // Event listeners
+    // 5. Add event listeners
     document.getElementById('all-db-toggle').addEventListener('change', function(e) {
         const isChecked = e.target.checked;
         document.querySelectorAll('.db-filter-checkbox').forEach(checkbox => {
@@ -548,13 +670,28 @@ function buildDatabaseFilterTree() {
     document.querySelectorAll('.db-filter-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', updateActiveDatabasesAndRefresh);
     });
+
+    // Add listeners for expand/collapse buttons
+    container.querySelectorAll('.db-tree-toggle').forEach(button => {
+        button.addEventListener('click', (e) => {
+            // Find the sibling container with the children
+            const childrenContainer = e.currentTarget.closest('.database-filter-item').nextElementSibling;
+            if (childrenContainer && childrenContainer.classList.contains('db-tree-children')) {
+                childrenContainer.classList.toggle('collapsed');
+                const icon = e.currentTarget.querySelector('i');
+                icon.classList.toggle('fa-chevron-right');
+                icon.classList.toggle('fa-chevron-down');
+            }
+        });
+    });
 }
+
 
 function updateActiveDatabasesAndRefresh() {
     activeDatabaseIds = Array.from(document.querySelectorAll('.db-filter-checkbox:checked'))
         .map(cb => cb.value);
     
-    // Update all toggle state
+    // Update "all" toggle state based on selection
     const allCheckboxes = document.querySelectorAll('.db-filter-checkbox');
     const allToggle = document.getElementById('all-db-toggle');
     if (activeDatabaseIds.length === allCheckboxes.length) {
