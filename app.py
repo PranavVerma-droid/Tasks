@@ -28,12 +28,18 @@ os.makedirs(NOTES_DIR, exist_ok=True) # Ensure notes directory exists
 
 # Data structure classes
 @dataclass
+class SelectOption:
+    id: str
+    name: str
+    color: str
+
+@dataclass
 class Property:
     id: str
     name: str
     type: str  # 'text', 'date', 'select', 'number', 'status', 'rich_text'
     value: Any = None
-    options: List[str] = None  # For select/status types
+    options: List[SelectOption] = None  # For select/status types
     rich_text_content: Optional[str] = None  # For rich text type
 
 @dataclass
@@ -113,9 +119,19 @@ def init_database():
             name TEXT NOT NULL,
             type TEXT NOT NULL,
             value TEXT,
-            options TEXT, -- JSON array for select/status options
             rich_text_content TEXT,
             PRIMARY KEY (id, owner_id)
+        )
+    ''')
+
+    # Create select_options table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS select_options (
+            id TEXT PRIMARY KEY,
+            property_id TEXT NOT NULL,
+            database_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL
         )
     ''')
     
@@ -221,15 +237,20 @@ def load_data():
         )
         data.databases[row['id']] = database
     
-    # Load properties
+    # Load properties and their select options
     cursor.execute('SELECT * FROM properties')
     for row in cursor.fetchall():
+        options = []
+        if row['type'] == 'select':
+            cursor.execute('SELECT * FROM select_options WHERE property_id = ? AND database_id = ?', (row['id'], row['owner_id']))
+            options = [SelectOption(id=opt['id'], name=opt['name'], color=opt['color']) for opt in cursor.fetchall()]
+
         prop = Property(
             id=row['id'],
             name=row['name'],
             type=row['type'],
             value=json.loads(row['value']) if row['value'] and row['value'] != 'null' else None,
-            options=json.loads(row['options']) if row['options'] else None,
+            options=options,
             rich_text_content=row['rich_text_content']
         )
         
@@ -341,11 +362,10 @@ def save_page(page: Page):
     cursor.execute('DELETE FROM properties WHERE owner_id = ? AND owner_type = ?', (page.id, 'page'))
     for prop_id, prop in page.properties.items():
         cursor.execute('''
-            INSERT INTO properties (id, owner_id, owner_type, name, type, value, options, rich_text_content)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO properties (id, owner_id, owner_type, name, type, value, rich_text_content)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (prop.id, page.id, 'page', prop.name, prop.type, 
               json.dumps(prop.value) if prop.value is not None else None,
-              json.dumps(prop.options) if prop.options else None,
               prop.rich_text_content))
     
     # Save page-database relationships
@@ -369,15 +389,23 @@ def save_database(database: Database):
     
     # Save properties
     cursor.execute('DELETE FROM properties WHERE owner_id = ? AND owner_type = ?', (database.id, 'database'))
+    cursor.execute('DELETE FROM select_options WHERE database_id = ?', (database.id,))
+
     for prop_id, prop in database.properties.items():
         cursor.execute('''
-            INSERT INTO properties (id, owner_id, owner_type, name, type, value, options, rich_text_content)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO properties (id, owner_id, owner_type, name, type, value, rich_text_content)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (prop.id, database.id, 'database', prop.name, prop.type,
               json.dumps(prop.value) if prop.value is not None else None,
-              json.dumps(prop.options) if prop.options else None,
               prop.rich_text_content))
-    
+        
+        if prop.type == 'select' and prop.options:
+            for option in prop.options:
+                cursor.execute('''
+                    INSERT INTO select_options (id, property_id, database_id, name, color)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (option.id, prop.id, database.id, option.name, option.color))
+
     # Save database-page relationships
     cursor.execute('DELETE FROM database_pages WHERE database_id = ?', (database.id,))
     if database.pages:
@@ -435,6 +463,7 @@ def delete_database_from_db(database_id: str):
     
     cursor.execute('DELETE FROM databases WHERE id = ?', (database_id,))
     cursor.execute('DELETE FROM properties WHERE owner_id = ? AND owner_type = ?', (database_id, 'database'))
+    cursor.execute('DELETE FROM select_options WHERE database_id = ?', (database_id,))
     cursor.execute('DELETE FROM page_databases WHERE database_id = ?', (database_id,))
     cursor.execute('DELETE FROM database_pages WHERE database_id = ?', (database_id,))
     cursor.execute('DELETE FROM blocks WHERE type = ? AND content LIKE ?', ('database', f'%"database_id": "{database_id}"%'))
@@ -509,8 +538,6 @@ def calculate_repetition_dates(start_date: str, repetition_type: str, repetition
             days_of_week = repetition_config.get('days_of_week', [start.weekday()])
             # days_of_week should be 0=Monday, 6=Sunday (Python's weekday)
             # If frontend sends 1=Monday, 3=Wednesday, 5=Friday, convert to Python weekday
-            days_of_week = [(d % 7) for d in days_of_week]  # 0=Sunday JS, 0=Monday Python
-            # If user sends 1=Monday, 3=Wednesday, 5=Friday, convert: Python weekday is 0=Monday
             days_of_week = [((d - 1) % 7) for d in days_of_week]
             current = start
             while current <= end:
@@ -612,8 +639,18 @@ def create_database():
     current_time = datetime.now().isoformat()
     
     # Convert properties to Property objects
-    db_properties = {prop_id: Property(id=prop_id, name=prop_data['name'], type=prop_data['type'], options=prop_data.get('options', [])) for prop_id, prop_data in properties.items()}
-    
+    db_properties = {}
+    for prop_id, prop_data in properties.items():
+        options = []
+        if prop_data['type'] == 'select':
+            # Add default options for 'select' type
+            options = [
+                SelectOption(id=str(uuid.uuid4()), name='Not Started', color='grey'),
+                SelectOption(id=str(uuid.uuid4()), name='In Progress', color='blue'),
+                SelectOption(id=str(uuid.uuid4()), name='Done', color='green')
+            ]
+        db_properties[prop_id] = Property(id=prop_id, name=prop_data['name'], type=prop_data['type'], options=options)
+
     # Create database
     database = Database(
         id=database_id,
@@ -774,7 +811,7 @@ def get_page_data(page_id):
     
     return jsonify({
         'success': True,
-        'page': asdict(page),
+        'page': asdict(page, dict_factory=lambda x: {k: v for (k, v) in x if v is not None}),
         'completion_logs': [asdict(log) for log in completion_logs]
     })
 
@@ -790,8 +827,8 @@ def get_database_data(database_id):
     
     return jsonify({
         'success': True,
-        'database': asdict(database),
-        'pages': [asdict(page) for page in pages]
+        'database': asdict(database, dict_factory=lambda x: {k: v for (k, v) in x if v is not None}),
+        'pages': [asdict(page, dict_factory=lambda x: {k: v for (k, v) in x if v is not None}) for page in pages]
     })
 
 @app.route('/api/update_database', methods=['POST'])
@@ -814,11 +851,22 @@ def update_database():
     # Convert properties to Property objects
     db_properties = {}
     for prop_id, prop_data in properties.items():
+        options = []
+        if prop_data['type'] == 'select':
+            if 'options' in prop_data and prop_data['options']:
+                 options = [SelectOption(id=opt.get('id', str(uuid.uuid4())), name=opt['name'], color=opt['color']) for opt in prop_data['options']]
+            else: # Add default if none exist
+                options = [
+                    SelectOption(id=str(uuid.uuid4()), name='Not Started', color='grey'),
+                    SelectOption(id=str(uuid.uuid4()), name='In Progress', color='blue'),
+                    SelectOption(id=str(uuid.uuid4()), name='Done', color='green')
+                ]
+
         db_properties[prop_id] = Property(
             id=prop_id,
             name=prop_data['name'],
             type=prop_data['type'],
-            options=prop_data.get('options', [])
+            options=options
         )
     
     # Update database properties

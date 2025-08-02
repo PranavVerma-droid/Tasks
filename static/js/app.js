@@ -122,7 +122,15 @@ function renderDatabaseTable(databaseId, pages, database) {
                     const content = pageProp.rich_text_content || '';
                     const plainText = content.replace(/<[^>]*>/g, ''); // Strip HTML for a clean preview
                     value = plainText.substring(0, 50) + (plainText.length > 50 ? '...' : '');
-                } else {
+                } else if (propDef.type === 'select') {
+                    const selectedOption = propDef.options.find(opt => opt.id === pageProp.value);
+                    if(selectedOption){
+                        value = `<span class="property-tag" style="background-color:${selectedOption.color};">${selectedOption.name}</span>`;
+                    } else {
+                        value = '-';
+                    }
+                }
+                else {
                     value = pageProp.value || '-';
                 }
             }
@@ -224,7 +232,19 @@ function showPageEditModal(page, database) {
                 </div>`;
         } else if (propDef.type === 'rich_text') {
             propertiesHtml += `<div class="form-group" data-property-id="${propId}" data-property-type="rich_text"><label for="editProp_${uniqueId}">${propDef.name}</label><textarea id="editProp_${uniqueId}" data-rich-text="true">${pageProp.rich_text_content || ''}</textarea></div>`;
-        } else {
+        } else if (propDef.type === 'select') {
+            let optionsHtml = '<option value="">-- Select --</option>';
+            propDef.options.forEach(opt => {
+                optionsHtml += `<option value="${opt.id}" ${pageProp.value === opt.id ? 'selected' : ''}>${opt.name}</option>`;
+            });
+            propertiesHtml += `
+                <div class="form-group" data-property-id="${propId}" data-property-type="select">
+                    <label for="editProp_${uniqueId}">${propDef.name}</label>
+                    <select id="editProp_${uniqueId}" class="form-control">${optionsHtml}</select>
+                </div>
+            `;
+        }
+        else {
              propertiesHtml += `<div class="form-group" data-property-id="${propId}" data-property-type="${propDef.type}"><label for="editProp_${uniqueId}">${propDef.name}</label><input type="text" id="editProp_${uniqueId}" class="form-control" value="${pageProp.value || ''}"></div>`;
         }
     });
@@ -312,7 +332,8 @@ function confirmEditPage(pageId, databaseId) {
         const propName = propNameEl.textContent;
         const uniqueIdMatch = (propEl.innerHTML.match(/id="[^"]*?(_[^"]+)"/) || [])[1];
         if (!uniqueIdMatch) return;
-        const uniqueId = uniqueIdMatch.substring(1);
+        const uniqueId = propId + '_' + (propEl.querySelector('[id^=editProp_]')?.id.split('_').pop() || '0');
+
 
         if (propType === 'date') {
             const isRepeating = document.getElementById(`editRepetitionCheckbox_${uniqueId}`).checked;
@@ -421,7 +442,7 @@ function confirmCreateDatabase() {
         const propName = item.querySelector('.property-name').value;
         const propType = item.querySelector('.property-type').value;
         if (propName) {
-            properties[`prop_${Date.now()}_${index}`] = { name: propName, type: propType, options: [] };
+            properties[`prop_${Date.now()}_${index}`] = { name: propName, type: propType };
         }
     });
     
@@ -456,6 +477,21 @@ function editDatabase(databaseId) {
 function showEditDatabaseModal(database) {
     let propertiesHtml = '';
     Object.values(database.properties).forEach((prop) => {
+        let optionsHtml = '';
+        if (prop.type === 'select') {
+            optionsHtml = '<div class="select-options-editor">';
+            prop.options.forEach(opt => {
+                optionsHtml += `
+                    <div class="select-option-item" data-option-id="${opt.id}">
+                        <input type="text" class="form-control option-name" value="${opt.name}">
+                        <input type="color" class="form-control option-color" value="${opt.color}">
+                        <button type="button" class="btn btn-sm btn-danger" onclick="removeSelectOption(this)">Remove</button>
+                    </div>
+                `;
+            });
+            optionsHtml += '</div><button type="button" class="btn btn-sm btn-secondary" onclick="addSelectOption(this)">Add Option</button>';
+        }
+
         propertiesHtml += `
             <div class="property-item" data-property-id="${prop.id}">
                 <input type="text" class="form-control property-name" value="${prop.name}">
@@ -468,6 +504,7 @@ function showEditDatabaseModal(database) {
                     <option value="number" ${prop.type === 'number' ? 'selected' : ''}>Number</option>
                 </select>
                 <button type="button" class="btn btn-sm btn-danger" onclick="removeProperty(this)">Remove</button>
+                ${optionsHtml}
             </div>
         `;
     });
@@ -509,7 +546,18 @@ function confirmEditDatabase(databaseId) {
         const propType = item.querySelector('.property-type').value;
         const propId = item.dataset.propertyId || `new_prop_${Date.now()}_${index}`;
         if (propName) {
-            properties[propId] = { id: propId, name: propName, type: propType, options: [] };
+            const propData = { id: propId, name: propName, type: propType, options: [] };
+            if (propType === 'select') {
+                item.querySelectorAll('.select-option-item').forEach(optItem => {
+                    const optionName = optItem.querySelector('.option-name').value;
+                    const optionColor = optItem.querySelector('.option-color').value;
+                    const optionId = optItem.dataset.optionId || `new_opt_${Date.now()}`;
+                    if (optionName) {
+                        propData.options.push({id: optionId, name: optionName, color: optionColor});
+                    }
+                });
+            }
+            properties[propId] = propData;
         }
     });
     
@@ -570,6 +618,22 @@ function removeProperty(button) {
     button.parentElement.remove();
 }
 
+function addSelectOption(button) {
+    const editor = button.previousElementSibling;
+    const item = document.createElement('div');
+    item.className = 'select-option-item';
+    item.innerHTML = `
+        <input type="text" class="form-control option-name" placeholder="Option name">
+        <input type="color" class="form-control option-color" value="#808080">
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeSelectOption(this)">Remove</button>
+    `;
+    editor.appendChild(item);
+}
+
+function removeSelectOption(button) {
+    button.parentElement.remove();
+}
+
 // =================================================================================
 // ADDING PAGES TO A DATABASE
 // =================================================================================
@@ -590,6 +654,13 @@ function renderPropertyInput(property, index) {
         case 'text': return `<input type="text" id="${inputId}" class="form-control">`;
         case 'number': return `<input type="number" id="${inputId}" class="form-control">`;
         case 'rich_text': return `<textarea id="${inputId}" data-rich-text="true"></textarea>`;
+        case 'select': {
+            let optionsHtml = '<option value="">-- Select --</option>';
+            property.options.forEach(opt => {
+                optionsHtml += `<option value="${opt.id}">${opt.name}</option>`;
+            });
+            return `<select id="${inputId}" class="form-control">${optionsHtml}</select>`;
+        }
         default: return `<input type="text" id="${inputId}" class="form-control">`;
     }
 };
@@ -1313,6 +1384,9 @@ window.createPageWithProperties = createPageWithProperties;
 // Properties
 window.addProperty = addProperty;
 window.removeProperty = removeProperty;
+window.addSelectOption = addSelectOption;
+window.removeSelectOption = removeSelectOption;
+
 
 // Repetition Modals
 window.toggleRepetitionOptions = toggleRepetitionOptions;

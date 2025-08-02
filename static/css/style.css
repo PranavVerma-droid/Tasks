@@ -435,13 +435,23 @@ body {
 
 /* Property Tags */
 .property-tag {
-    display: inline-block;
-    padding: 4px 8px;
-    background-color: #3b82f6;
-    color: #ffffff;
-    border-radius: 4px;
+    display: inline-flex; /* Use inline-flex for better alignment */
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px; /* Pill shape */
     font-size: 12px;
     font-weight: 500;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    /* Color and background-color will be set dynamically */
+}
+
+.property-tag::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: currentColor; /* Dot color matches text color */
 }
 
 .empty-property {
@@ -1708,14 +1718,13 @@ textarea.rich-text-initialized {
     cursor: pointer;
 }
 
-.form-control-color::-webkit-color-swatch {
-    border-radius: 6px;
-    border: 1px solid #404040;
+.form-control-color::-webkit-color-swatch-wrapper {
+    padding: 0;
 }
 
-.form-control-color::-moz-color-swatch {
-    border-radius: 6px;
-    border: 1px solid #404040;
+.form-control-color::-webkit-color-swatch {
+    border: 1px solid #6b7280;
+    border-radius: 4px;
 }
 
 #savingIndicator {
@@ -2519,4 +2528,46 @@ textarea.rich-text-initialized {
 .modal .form-group label,
 .modal-content .form-group label {
     color: #fff !important;
+}
+
+.select-options-editor {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #404040;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.select-option-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.select-option-item .option-name {
+    flex-grow: 1;
+}
+
+.select-option-item .option-color {
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.select-option-item .option-color::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.select-option-item .option-color::-webkit-color-swatch {
+    border: 1px solid #6b7280;
+    border-radius: 4px;
+}
+
+.property-item .btn-sm {
+    flex-shrink: 0;
 }
