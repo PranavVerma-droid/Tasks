@@ -73,6 +73,7 @@
     background: #121212;
     padding: 15px;
     border-right: 1px solid #333;
+    flex-shrink: 0;
 }
 
 .calendar-main {
@@ -131,6 +132,7 @@
 #database-filter-tree {
     max-height: 400px;
     overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal scroll */
 }
 
 .database-filter-item {
@@ -145,7 +147,17 @@
     gap: 8px;
     cursor: pointer;
     flex-grow: 1;
+    /* FIX: Allow flex items to shrink and wrap */
+    min-width: 0; 
 }
+
+/* FIX: Rule to wrap the text inside the label's span */
+.database-filter-item label span {
+    white-space: normal;
+    word-break: break-word; /* Use break-word for better wrapping */
+    line-height: 1.3;
+}
+
 
 .db-color-dot {
     width: 12px;
@@ -164,7 +176,7 @@
     margin: 0;
 }
 
-/* --- NEW: Database Tree Styles --- */
+/* --- Database Tree Styles --- */
 .db-tree-toggle {
     background: none;
     border: none;
